@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 
 /// Formatting presets that swap the Ollama cleanup system prompt.
@@ -34,7 +35,14 @@ final class AppSettings: ObservableObject {
         static let cleanupEnabled = "cleanupEnabled"
         static let formattingStyle = "formattingStyle"
         static let launchAtLogin = "launchAtLogin"
+        static let hotkeyKeyCode = "hotkeyKeyCode"
+        static let hotkeyModifierFlags = "hotkeyModifierFlags"
+        static let contextAwareFormatting = "contextAwareFormatting"
     }
+
+    /// Default hotkey: Control+~ (tilde/backtick key = keyCode 50).
+    static let defaultHotkeyKeyCode = 50
+    static let defaultHotkeyModifierFlags = Int(CGEventFlags.maskControl.rawValue)
 
     @Published var whisperModelPath: String {
         didSet { defaults.set(whisperModelPath, forKey: Key.whisperModelPath) }
@@ -54,6 +62,23 @@ final class AppSettings: ObservableObject {
     @Published var launchAtLogin: Bool {
         didSet { defaults.set(launchAtLogin, forKey: Key.launchAtLogin) }
     }
+    /// Virtual key code for the dictation toggle hotkey.
+    @Published var hotkeyKeyCode: Int {
+        didSet { defaults.set(hotkeyKeyCode, forKey: Key.hotkeyKeyCode) }
+    }
+    /// Required modifier flags (a `CGEventFlags` rawValue subset) for the hotkey.
+    @Published var hotkeyModifierFlags: Int {
+        didSet { defaults.set(hotkeyModifierFlags, forKey: Key.hotkeyModifierFlags) }
+    }
+    /// Adapt cleanup formatting to the active app (code editors, Gmail).
+    @Published var contextAwareFormatting: Bool {
+        didSet { defaults.set(contextAwareFormatting, forKey: Key.contextAwareFormatting) }
+    }
+
+    /// Human-readable shortcut, e.g. "⌃~" or "⌥Space".
+    var hotkeyDisplayString: String {
+        HotkeyFormatting.string(keyCode: hotkeyKeyCode, flags: hotkeyModifierFlags)
+    }
 
     private init() {
         whisperModelPath = defaults.string(forKey: Key.whisperModelPath)
@@ -64,6 +89,11 @@ final class AppSettings: ObservableObject {
         formattingStyle = FormattingStyle(rawValue: defaults.string(forKey: Key.formattingStyle) ?? "")
             ?? .formal
         launchAtLogin = defaults.bool(forKey: Key.launchAtLogin)
+        hotkeyKeyCode = defaults.object(forKey: Key.hotkeyKeyCode) as? Int
+            ?? AppSettings.defaultHotkeyKeyCode
+        hotkeyModifierFlags = defaults.object(forKey: Key.hotkeyModifierFlags) as? Int
+            ?? AppSettings.defaultHotkeyModifierFlags
+        contextAwareFormatting = defaults.object(forKey: Key.contextAwareFormatting) as? Bool ?? true
     }
 
     /// Prefer a model bundled in the .app Resources; otherwise fall back to the repo models dir.

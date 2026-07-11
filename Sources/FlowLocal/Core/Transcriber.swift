@@ -31,6 +31,19 @@ final class Transcriber {
 
     var isLoaded: Bool { ctx != nil }
 
+    /// Peak-normalize quiet audio up toward a target level (never attenuates loud speech),
+    /// with a capped gain so we don't blow up background noise on true silence.
+    static func normalizeGain(_ samples: [Float]) -> [Float] {
+        var peak: Float = 0
+        for v in samples { let a = abs(v); if a > peak { peak = a } }
+        guard peak > 0.0001 else { return samples } // essentially silent — leave as-is
+        let targetPeak: Float = 0.7
+        let maxGain: Float = 12
+        let gain = min(maxGain, max(1, targetPeak / peak))
+        guard gain > 1.01 else { return samples }
+        return samples.map { $0 * gain }
+    }
+
     /// Load (or reload) the model. Uses the GPU (Metal) by default.
     func loadModel(at path: String) throws {
         guard FileManager.default.fileExists(atPath: path) else {
@@ -54,6 +67,9 @@ final class Transcriber {
         guard let ctx else { throw TranscriberError.loadFailed("model not loaded") }
         guard !samples.isEmpty else { return "" }
 
+        // Adaptive gain so quiet / whispered speech is picked up as clearly as normal speech.
+        let samples = Transcriber.normalizeGain(samples)
+
         var params = whisper_full_default_params(WHISPER_SAMPLING_GREEDY)
         params.n_threads = threads
         params.no_timestamps = true
@@ -65,6 +81,8 @@ final class Transcriber {
         params.suppress_blank = true
         params.temperature = 0
         params.no_context = true
+        // Lower the "no speech" threshold so faint/whispered segments aren't dropped as silence.
+        params.no_speech_thold = 0.2
 
         // Language is held for the duration of the call via a C string.
         let result: Int32 = (language.map { lang in

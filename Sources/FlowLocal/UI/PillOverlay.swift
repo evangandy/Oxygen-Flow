@@ -2,108 +2,121 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The floating pill — minimalist, Wispr Flow–inspired overlay.
+/// Holds the state the chip should *display*. This lags `DictationController.state` on the way
+/// out: when dictation ends we keep showing the last real content while the panel fades, so the
+/// capsule never collapses into a bare square before disappearing.
+@MainActor
+final class ChipPresenter: ObservableObject {
+    @Published var state: DictationController.State = .idle
+}
+
+/// The floating chip — small, clean, cobalt-grid themed. Shows only the live waveform while
+/// listening, with a cancel (✕) and confirm (✓) button. No transcript is shown.
 struct PillView: View {
     @ObservedObject var controller: DictationController
-    @State private var glowPulse = false
+    @ObservedObject var presenter: ChipPresenter
 
     var body: some View {
-        HStack(spacing: 10) {
-            indicator
-            content
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
-        .frame(minWidth: 120)
-        .background(
-            Capsule(style: .continuous)
-                .fill(.ultraThinMaterial)
-                .environment(\.colorScheme, .dark)
-        )
-        .overlay(
-            Capsule(style: .continuous)
-                .strokeBorder(
-                    LinearGradient(
-                        colors: [.white.opacity(0.15), .white.opacity(0.05)],
-                        startPoint: .top, endPoint: .bottom
-                    ),
-                    lineWidth: 0.5
-                )
-        )
-        .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
-        .fixedSize()
-        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: controller.state)
+        content
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, 6)
+            .frame(height: 34)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(Cobalt.paper)
+                    .shadow(color: Cobalt.ink.opacity(0.18), radius: 14, y: 5)
+            )
+            .overlay(
+                Capsule(style: .continuous)
+                    .strokeBorder(Cobalt.rule, lineWidth: 1)
+            )
+            .fixedSize()
+            .animation(.spring(response: 0.34, dampingFraction: 0.82), value: presenter.state)
     }
 
-    @ViewBuilder private var indicator: some View {
-        switch controller.state {
-        case .listening:
-            EmptyView()
-        case .transcribing, .cleaning:
-            ProgressView()
-                .controlSize(.small)
-                .tint(.white.opacity(0.7))
-        case .error:
-            Image(systemName: "exclamationmark.circle")
-                .font(.system(size: 13, weight: .medium))
-                .foregroundStyle(.orange)
-        case .idle:
-            EmptyView()
-        }
+    private var horizontalPadding: CGFloat {
+        if case .listening = presenter.state { return 6 }
+        return 13
     }
 
     @ViewBuilder private var content: some View {
-        switch controller.state {
+        switch presenter.state {
         case .listening:
-            if !controller.partialTranscript.isEmpty {
-                Text(controller.partialTranscript)
-                    .font(.system(size: 13, weight: .regular, design: .rounded))
-                    .foregroundStyle(.white.opacity(0.85))
-                    .lineLimit(1)
-                    .truncationMode(.head)
-                    .frame(maxWidth: 280, alignment: .trailing)
-                    .animation(.easeOut(duration: 0.15), value: controller.partialTranscript)
-            } else {
+            HStack(spacing: 8) {
+                ChipButton(system: "xmark", tint: Cobalt.inkMuted) { controller.cancel() }
                 Waveform(level: controller.level)
-                    .frame(width: 60, height: 16)
+                    .frame(width: 48, height: 18)
+                ChipButton(system: "checkmark", tint: .white, filled: true) { controller.toggle() }
             }
-        case .transcribing:
-            Text("Transcribing")
-                .pillLabel()
-        case .cleaning:
-            Text("Formatting")
-                .pillLabel()
+        case .transcribing, .cleaning:
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small).tint(Cobalt.ink)
+                Text(presenter.state == .cleaning ? "Formatting" : "Transcribing").chipLabel()
+            }
+        case .copied:
+            HStack(spacing: 7) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Cobalt.ink)
+                Text("Copied · ⌘V to paste").chipLabel()
+            }
         case .error(let msg):
-            Text(msg)
-                .pillLabel()
-                .lineLimit(1)
-                .frame(maxWidth: 220)
+            HStack(spacing: 7) {
+                Image(systemName: "exclamationmark.triangle.fill")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Cobalt.danger)
+                Text(msg).chipLabel().lineLimit(1).frame(maxWidth: 200)
+            }
         case .idle:
             EmptyView()
         }
     }
 }
 
-private extension View {
-    func pillLabel() -> some View {
-        self.font(.system(size: 13, weight: .regular, design: .rounded))
-            .foregroundStyle(.white.opacity(0.7))
+/// A small circular icon button used on the chip.
+private struct ChipButton: View {
+    let system: String
+    var tint: Color
+    var filled: Bool = false
+    let action: () -> Void
+    @State private var hovering = false
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: system)
+                .font(.system(size: 10, weight: .bold))
+                .foregroundStyle(filled ? .white : tint)
+                .frame(width: 22, height: 22)
+                .background(
+                    Circle().fill(filled ? AnyShapeStyle(Cobalt.ink)
+                                         : AnyShapeStyle(Cobalt.ink.opacity(hovering ? 0.16 : 0.09)))
+                )
+                .scaleEffect(hovering ? 1.08 : 1)
+        }
+        .buttonStyle(.plain)
+        .onHover { h in withAnimation(.easeOut(duration: 0.12)) { hovering = h } }
     }
 }
 
-/// Minimal animated bar waveform.
+private extension Text {
+    func chipLabel() -> some View {
+        self.font(.system(size: 12, weight: .medium, design: .rounded))
+            .foregroundStyle(Cobalt.ink.opacity(0.85))
+    }
+}
+
+/// Minimal animated bar waveform driven by the live input level.
 struct Waveform: View {
     var level: Float
-    private let bars = 5
-    private static let weights: [CGFloat] = [0.5, 0.8, 1.0, 0.8, 0.5]
+    private let bars = 7
+    private static let weights: [CGFloat] = [0.35, 0.6, 0.85, 1.0, 0.85, 0.6, 0.35]
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2.5) {
             ForEach(0..<bars, id: \.self) { i in
-                let w = Waveform.weights[i]
                 RoundedRectangle(cornerRadius: 1.5)
-                    .fill(.white.opacity(0.6))
-                    .frame(width: 2.5, height: barHeight(weight: w))
+                    .fill(Cobalt.ink.opacity(0.85))
+                    .frame(width: 2.5, height: barHeight(weight: Waveform.weights[i]))
             }
         }
         .animation(.easeOut(duration: 0.1), value: level)
@@ -111,23 +124,25 @@ struct Waveform: View {
 
     private func barHeight(weight: CGFloat) -> CGFloat {
         let base: CGFloat = 3
-        let dynamic = CGFloat(level) * 14 * weight
-        return max(base, min(16, base + dynamic))
+        let dynamic = CGFloat(level) * 16 * weight
+        return max(base, min(18, base + dynamic))
     }
 }
 
-/// Owns the borderless, always-on-top, click-through NSPanel and shows/hides it with state.
+/// Owns the borderless, always-on-top NSPanel and shows/hides it with a clean fade. The chip is
+/// interactive only while listening (its buttons accept clicks); otherwise it's click-through.
 @MainActor
 final class PillWindowController {
     private let panel: NSPanel
     private let controller: DictationController
+    private let presenter = ChipPresenter()
     private var cancellables = Set<AnyCancellable>()
 
     init(controller: DictationController) {
         self.controller = controller
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 200, height: 56),
+            contentRect: NSRect(x: 0, y: 0, width: 160, height: 40),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -137,11 +152,11 @@ final class PillWindowController {
         panel.backgroundColor = .clear
         panel.isOpaque = false
         panel.hasShadow = false
-        panel.ignoresMouseEvents = true
+        panel.alphaValue = 0
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.hidesOnDeactivate = false
 
-        let host = NSHostingView(rootView: PillView(controller: controller))
+        let host = NSHostingView(rootView: PillView(controller: controller, presenter: presenter))
         host.translatesAutoresizingMaskIntoConstraints = true
         panel.contentView = host
 
@@ -149,30 +164,55 @@ final class PillWindowController {
             .receive(on: RunLoop.main)
             .sink { [weak self] state in self?.update(for: state) }
             .store(in: &cancellables)
-
-        controller.$partialTranscript
-            .receive(on: RunLoop.main)
-            .sink { [weak self] _ in self?.reposition() }
-            .store(in: &cancellables)
     }
 
     private func update(for state: DictationController.State) {
+        // Only capture clicks while the ✕/✓ buttons are visible; otherwise stay click-through.
+        panel.ignoresMouseEvents = (state != .listening)
+
         if state == .idle {
-            panel.orderOut(nil)
+            // Keep the last visible content on screen; fade the whole panel out, THEN clear/hide.
+            fade(to: 0) { [weak self] in
+                guard let self, self.controller.state == .idle else { return }
+                self.presenter.state = .idle
+                self.panel.orderOut(nil)
+            }
         } else {
-            reposition()
+            presenter.state = state
             panel.orderFrontRegardless()
+            fade(to: 1)
+            // Size to the freshly-rendered content on the next runloop tick (after SwiftUI lays out),
+            // so the capsule is never clipped or briefly square.
+            DispatchQueue.main.async { [weak self] in self?.reposition() }
         }
     }
 
+    private func fade(to alpha: CGFloat, completion: (() -> Void)? = nil) {
+        NSAnimationContext.runAnimationGroup({ ctx in
+            ctx.duration = 0.2
+            ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            panel.animator().alphaValue = alpha
+        }, completionHandler: completion)
+    }
+
+    /// Center the chip near the bottom of whichever screen currently holds the mouse cursor,
+    /// so on a multi-monitor setup the chip appears on the screen you're working on.
     private func reposition() {
-        panel.layoutIfNeeded()
-        let size = panel.contentView?.fittingSize ?? NSSize(width: 200, height: 56)
-        panel.setContentSize(size)
-        guard let screen = NSScreen.main else { return }
+        guard let host = panel.contentView else { return }
+        host.layoutSubtreeIfNeeded()
+        let size = host.fittingSize
+        guard size.width > 1, size.height > 1 else { return }
+
+        let screen = screenWithMouse()
         let vf = screen.visibleFrame
-        let x = vf.midX - size.width / 2
-        let y = vf.minY + 90 // hover near the bottom, above the Dock
-        panel.setFrameOrigin(NSPoint(x: x, y: y))
+        let origin = NSPoint(x: vf.midX - size.width / 2, y: vf.minY + 64)
+        panel.setFrame(NSRect(origin: origin, size: size), display: true, animate: false)
+    }
+
+    private func screenWithMouse() -> NSScreen {
+        let mouse = NSEvent.mouseLocation
+        return NSScreen.screens.first { NSMouseInRect(mouse, $0.frame, false) }
+            ?? NSScreen.main
+            ?? NSScreen.screens[0]
     }
 }

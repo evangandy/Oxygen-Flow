@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build FlowLocal and assemble a signed .app bundle.
+# Build Cobalt Flow and assemble a signed .app bundle.
 # Usage: scripts/build_app.sh [debug|release]
 set -euo pipefail
 
@@ -11,14 +11,15 @@ echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG"
 
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/FlowLocal"
-APP="$ROOT/FlowLocal.app"
+APP="$ROOT/Cobalt Flow.app"
 CONTENTS="$APP/Contents"
 
 echo "==> assembling $APP"
-rm -rf "$APP"
+rm -rf "$APP" "$ROOT/FlowLocal.app"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN" "$CONTENTS/MacOS/FlowLocal"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
+cp "$ROOT/Resources/AppIcon.icns" "$CONTENTS/Resources/AppIcon.icns"
 
 echo "==> codesign with 'FlowLocal Dev' certificate (with entitlements)"
 codesign --force --deep --sign "FlowLocal Dev" \

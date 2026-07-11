@@ -64,16 +64,18 @@ struct MenuContent: View {
 
         Button("Settings…") { openSettings() }
             .keyboardShortcut(",", modifiers: .command)
-        Button("Quit FlowLocal") { NSApp.terminate(nil) }
+        Button("Quit Cobalt Flow") { NSApp.terminate(nil) }
             .keyboardShortcut("q", modifiers: .command)
     }
 
     private var statusText: String {
         switch controller.state {
-        case .idle: return controller.isReady ? "Ready — Control+~ to dictate" : "Loading model…"
+        case .idle:
+            return controller.isReady ? "Ready — \(AppSettings.shared.hotkeyDisplayString) to dictate" : "Loading model…"
         case .listening: return "Listening…"
         case .transcribing: return "Transcribing…"
         case .cleaning: return "Formatting…"
+        case .copied: return "Copied to clipboard"
         case .error(let m): return "Error: \(m)"
         }
     }

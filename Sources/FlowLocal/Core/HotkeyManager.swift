@@ -11,7 +11,17 @@ final class HotkeyManager {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
 
-    private let tildeKeyCode: CGKeyCode = 50
+    /// The configured shortcut. Updated live from settings; read on the main run loop
+    /// (where the event-tap callback fires), so no extra synchronization is needed.
+    private var keyCode: CGKeyCode = 50
+    private var requiredFlags: CGEventFlags = .maskControl
+
+    /// Set the shortcut to match. Safe to call any time; takes effect on the next keypress.
+    func configure(keyCode: Int, modifierFlags: Int) {
+        self.keyCode = CGKeyCode(keyCode)
+        self.requiredFlags = CGEventFlags(rawValue: UInt64(modifierFlags))
+            .intersection(HotkeyFormatting.relevantFlags)
+    }
 
     /// Whether the process is currently trusted for Accessibility (needed for the tap + injection).
     static var hasAccessibilityPermission: Bool {
@@ -81,15 +91,12 @@ final class HotkeyManager {
 
         guard type == .keyDown else { return Unmanaged.passUnretained(event) }
 
-        let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
-        let flags = event.flags
-        // Option held, and no other primary modifier that would indicate a different shortcut.
-        let hasCtrl = flags.contains(.maskControl)
-        let noCmd = !flags.contains(.maskCommand)
-        let noOption = !flags.contains(.maskAlternate)
+        let code = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
+        // Match the exact configured modifier set (ignoring irrelevant/device bits).
+        let maskedFlags = event.flags.intersection(HotkeyFormatting.relevantFlags)
 
-        if keyCode == tildeKeyCode && hasCtrl && noCmd && noOption {
-            NSLog("[HotkeyMgr] 🎯 Control+~ DETECTED — firing toggle")
+        if code == keyCode && maskedFlags == requiredFlags {
+            NSLog("[HotkeyMgr] 🎯 Hotkey DETECTED — firing toggle")
             DispatchQueue.main.async { [weak self] in
                 self?.onToggle?()
             }

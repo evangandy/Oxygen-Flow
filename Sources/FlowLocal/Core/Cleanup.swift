@@ -21,8 +21,8 @@ final class Cleanup {
         URL(string: base.trimmingCharacters(in: .whitespaces).appending(path))
     }
 
-    private func systemPrompt(style: FormattingStyle) -> String {
-        """
+    private func systemPrompt(style: FormattingStyle, context: AppContext) -> String {
+        var prompt = """
         You are a minimal text cleanup engine, NOT a conversational AI. You receive a raw speech-to-text transcript. Your job is to make the smallest changes necessary to produce clean, readable text.
 
         RULES:
@@ -36,6 +36,31 @@ final class Cleanup {
 
         \(style.promptGuidance)
         """
+        if let guidance = context.promptGuidance {
+            prompt += "\n\n" + guidance
+        }
+        return prompt
+    }
+
+    private struct TagsResponse: Decodable {
+        struct Model: Decodable { let name: String }
+        let models: [Model]
+    }
+
+    /// Fetch the list of models installed in the local Ollama server (from `/api/tags`).
+    /// Returns model names sorted alphabetically, or throws if Ollama is unreachable.
+    func listModels(endpoint: String) async throws -> [String] {
+        guard let url = endpointURL(endpoint, path: "/api/tags") else {
+            throw NSError(domain: "FlowLocal.Cleanup", code: -1,
+                          userInfo: [NSLocalizedDescriptionKey: "Bad Ollama endpoint"])
+        }
+        let (data, response) = try await session.data(from: url)
+        if let http = response as? HTTPURLResponse, http.statusCode != 200 {
+            throw NSError(domain: "FlowLocal.Cleanup", code: http.statusCode,
+                          userInfo: [NSLocalizedDescriptionKey: "Ollama returned HTTP \(http.statusCode)"])
+        }
+        let tags = try JSONDecoder().decode(TagsResponse.self, from: data)
+        return tags.models.map(\.name).sorted()
     }
 
     /// Preload/pin the model so the first real request is warm. Fire-and-forget.
@@ -61,6 +86,7 @@ final class Cleanup {
         endpoint: String,
         model: String,
         style: FormattingStyle,
+        context: AppContext = .general,
         onDelta: @escaping (String) -> Void
     ) async throws -> String {
         guard let url = endpointURL(endpoint, path: "/api/generate") else {
@@ -72,7 +98,7 @@ final class Cleanup {
         req.setValue("application/json", forHTTPHeaderField: "Content-Type")
         let body: [String: Any] = [
             "model": model,
-            "system": systemPrompt(style: style),
+            "system": systemPrompt(style: style, context: context),
             "prompt": "RAW TRANSCRIPT:\n\(raw)",
             "stream": true,
             "keep_alive": -1,

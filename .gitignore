@@ -1,7 +1,8 @@
 .build/
-FlowLocal.app
+*.app
 .DS_Store
 vendor/whisper.cpp/build/
 models/
 *.bin
 *.wav
+scripts/.icon-out/

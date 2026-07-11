@@ -3,7 +3,7 @@ import Combine
 import Foundation
 
 /// The dictation state machine. Owns all subsystems and orchestrates
-/// hotkey -> record -> transcribe -> cleanup -> inject. Published state drives the pill overlay.
+/// hotkey -> record -> transcribe -> cleanup -> deliver. Published state drives the pill overlay.
 @MainActor
 final class DictationController: ObservableObject {
 
@@ -12,12 +12,12 @@ final class DictationController: ObservableObject {
         case listening
         case transcribing
         case cleaning
+        case copied         // finished, text placed on the clipboard (no editable field was focused)
         case error(String)
     }
 
     @Published private(set) var state: State = .idle
     @Published private(set) var level: Float = 0
-    @Published private(set) var partialTranscript: String = ""
     /// Whether the model/warm-up finished; the menu bar reflects readiness.
     @Published private(set) var isReady = false
     @Published private(set) var lastError: String?
@@ -29,8 +29,11 @@ final class DictationController: ObservableObject {
     private nonisolated(unsafe) let transcriber = Transcriber()
     private let cleanup = Cleanup()
     private let injector = TextInjector()
-    
-    private var inferenceLoopTask: Task<Void, Never>?
+
+    /// The app the user was dictating into, captured when recording stops.
+    private var targetAppName: String?
+    private var targetContext: AppContext = .general
+    private var copiedResetTask: Task<Void, Never>?
 
     private var cancellables = Set<AnyCancellable>()
     private var accessibilityTimer: Timer?
@@ -43,30 +46,37 @@ final class DictationController: ObservableObject {
             .store(in: &cancellables)
 
         hotkey.onToggle = { [weak self] in self?.toggle() }
+
+        // Keep the global hotkey in sync with the user's configured shortcut.
+        hotkey.configure(keyCode: settings.hotkeyKeyCode, modifierFlags: settings.hotkeyModifierFlags)
+        Publishers.CombineLatest(settings.$hotkeyKeyCode, settings.$hotkeyModifierFlags)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] code, flags in self?.hotkey.configure(keyCode: code, modifierFlags: flags) }
+            .store(in: &cancellables)
     }
 
     // MARK: - Lifecycle
 
     /// Called once at launch: request permissions, start the hotkey, warm the models.
     func bootstrap() {
-        NSLog("[FlowLocal] bootstrap() starting")
-        NSLog("[FlowLocal] AXIsProcessTrusted = \(HotkeyManager.hasAccessibilityPermission)")
-        
+        NSLog("[Cobalt] bootstrap() starting")
+        NSLog("[Cobalt] AXIsProcessTrusted = \(HotkeyManager.hasAccessibilityPermission)")
+
         AudioRecorder.requestMicrophonePermission { granted in
-            NSLog("[FlowLocal] Microphone permission: \(granted)")
+            NSLog("[Cobalt] Microphone permission: \(granted)")
         }
 
         if !HotkeyManager.hasAccessibilityPermission {
-            NSLog("[FlowLocal] Accessibility NOT granted — requesting prompt")
+            NSLog("[Cobalt] Accessibility NOT granted — requesting prompt")
             HotkeyManager.requestAccessibilityPermission()
         }
-        
+
         let tapOk = hotkey.start()
-        NSLog("[FlowLocal] hotkey.start() = \(tapOk)")
+        NSLog("[Cobalt] hotkey.start() = \(tapOk)")
         if !tapOk {
             lastError = "Grant Accessibility permission, then relaunch."
         }
-        
+
         // Periodically retry the event tap in case the user grants permission after launch.
         startAccessibilityRetryTimer()
 
@@ -74,15 +84,15 @@ final class DictationController: ObservableObject {
 
         // Load whisper off the main thread; mark ready when done.
         let path = settings.whisperModelPath
-        NSLog("[FlowLocal] Loading whisper model from: \(path)")
+        NSLog("[Cobalt] Loading whisper model from: \(path)")
         inferenceQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.transcriber.loadModel(at: path)
-                NSLog("[FlowLocal] Whisper model loaded OK")
+                NSLog("[Cobalt] Whisper model loaded OK")
                 Task { @MainActor in self.isReady = true }
             } catch {
-                NSLog("[FlowLocal] Whisper model FAILED: \(error)")
+                NSLog("[Cobalt] Whisper model FAILED: \(error)")
                 Task { @MainActor in
                     self.lastError = error.localizedDescription
                     self.state = .error(error.localizedDescription)
@@ -90,7 +100,7 @@ final class DictationController: ObservableObject {
             }
         }
     }
-    
+
     /// Retry connecting the event tap every 2 seconds until it succeeds.
     private func startAccessibilityRetryTimer() {
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
@@ -100,12 +110,12 @@ final class DictationController: ObservableObject {
                 if trusted {
                     let ok = self.hotkey.start()
                     if ok {
-                        NSLog("[FlowLocal] ✅ Event tap connected successfully!")
+                        NSLog("[Cobalt] ✅ Event tap connected successfully!")
                         self.lastError = nil
                         timer.invalidate()
                         self.accessibilityTimer = nil
                     } else {
-                        NSLog("[FlowLocal] AX trusted but tap failed — will retry")
+                        NSLog("[Cobalt] AX trusted but tap failed — will retry")
                     }
                 }
             }
@@ -114,22 +124,21 @@ final class DictationController: ObservableObject {
 
     /// Re-check the hotkey tap after the user grants Accessibility (from the menu).
     func retryHotkey() {
-        NSLog("[FlowLocal] retryHotkey() — AX trusted: \(HotkeyManager.hasAccessibilityPermission)")
-        // Toggle the accessibility list: remove and re-add to force macOS to re-evaluate
+        NSLog("[Cobalt] retryHotkey() — AX trusted: \(HotkeyManager.hasAccessibilityPermission)")
         if hotkey.start() {
-            NSLog("[FlowLocal] ✅ retryHotkey succeeded")
+            NSLog("[Cobalt] ✅ retryHotkey succeeded")
             lastError = nil
         } else {
-            NSLog("[FlowLocal] ❌ retryHotkey failed")
+            NSLog("[Cobalt] ❌ retryHotkey failed")
         }
     }
 
-    // MARK: - Toggle
+    // MARK: - Toggle / cancel
 
     func toggle() {
-        NSLog("[FlowLocal] toggle() — current state: \(state)")
+        NSLog("[Cobalt] toggle() — current state: \(state)")
         switch state {
-        case .idle, .error:
+        case .idle, .error, .copied:
             startListening()
         case .listening:
             stopAndProcess()
@@ -138,7 +147,16 @@ final class DictationController: ObservableObject {
         }
     }
 
+    /// Discard the current recording without transcribing (the chip's ✕ button).
+    func cancel() {
+        guard state == .listening else { return }
+        _ = recorder.stop()
+        state = .idle
+        if NSApp.isActive { NSApp.hide(nil) }
+    }
+
     private func startListening() {
+        copiedResetTask?.cancel()
         do {
             try recorder.start()
             if HotkeyManager.hasAccessibilityPermission {
@@ -146,24 +164,7 @@ final class DictationController: ObservableObject {
             } else {
                 lastError = "Grant Accessibility permission, then relaunch."
             }
-            partialTranscript = ""
             state = .listening
-            
-            inferenceLoopTask = Task {
-                while !Task.isCancelled {
-                    try? await Task.sleep(nanoseconds: 500_000_000)
-                    guard !Task.isCancelled, state == .listening else { break }
-                    let current = recorder.currentSamples()
-                    guard current.count > 8000 else { continue }
-                    if let partial = try? await transcribeAsync(current) {
-                        await MainActor.run {
-                            if self.state == .listening {
-                                self.partialTranscript = partial
-                            }
-                        }
-                    }
-                }
-            }
         } catch {
             state = .error(error.localizedDescription)
             flashErrorThenIdle()
@@ -171,39 +172,61 @@ final class DictationController: ObservableObject {
     }
 
     private func stopAndProcess() {
-        inferenceLoopTask?.cancel()
-        inferenceLoopTask = nil
-        
+        // Remember which app to deliver into (and its formatting context) before we hide.
+        if let front = NSWorkspace.shared.frontmostApplication?.localizedName,
+           front != "Cobalt Flow" {
+            targetAppName = front
+        }
+        targetContext = settings.contextAwareFormatting ? AppContext.detect() : .general
+
         let samples = recorder.stop()
         state = .transcribing
-        
+
         // Hide the UI so focus returns to the previous text field for pasting.
         if NSApp.isActive {
             NSApp.hide(nil)
         }
-        
+
         runPipeline(samples: samples)
     }
 
     // MARK: - Pipeline
 
     private func runPipeline(samples: [Float]) {
+        let appName = targetAppName
         Task {
             do {
                 let raw = try await transcribeAsync(samples)
-                NSLog("[FlowLocal] Transcription result: '\(raw)'")
-                guard !raw.isEmpty else { NSLog("[FlowLocal] Empty transcription, returning to idle"); state = .idle; return }
+                NSLog("[Cobalt] Transcription: '\(raw)'")
+                guard !raw.isEmpty else { state = .idle; return }
 
+                let audioDuration = Double(samples.count) / 16_000.0
+                // Give focus a beat to settle back on the target field after hiding.
+                let editable = TextInjector.focusedElementIsEditable()
+
+                var finalText = raw
                 if settings.cleanupEnabled {
                     state = .cleaning
-                    NSLog("[FlowLocal] Starting cleanup…")
-                    try await runCleanup(raw: raw)
-                    NSLog("[FlowLocal] Cleanup done")
-                } else {
-                    NSLog("[FlowLocal] Cleanup disabled, injecting raw text")
+                    finalText = await produceCleaned(raw: raw, streamToCursor: editable)
+                } else if editable {
                     injector.injectAtCursor(raw)
                 }
-                state = .idle
+
+                let delivery: DeliveryMode
+                if editable {
+                    delivery = .pasted
+                    state = .idle
+                } else {
+                    injector.copyToClipboard(finalText)
+                    delivery = .copied
+                    state = .copied
+                    scheduleCopiedReset()
+                }
+
+                TranscriptionStore.shared.add(
+                    raw: raw, cleaned: finalText, audioDuration: audioDuration,
+                    appName: appName, delivery: delivery
+                )
             } catch {
                 state = .error(error.localizedDescription)
                 lastError = error.localizedDescription
@@ -212,24 +235,36 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func runCleanup(raw: String) async throws {
-        let session = injector.makeSession()
+    /// Run Ollama cleanup, returning the full cleaned text. When `streamToCursor` is true the
+    /// text is progressively pasted at the cursor as it generates; otherwise it is only collected
+    /// (for the copy-to-clipboard path). Falls back to the raw transcript if Ollama fails.
+    private func produceCleaned(raw: String, streamToCursor: Bool) async -> String {
+        let session = streamToCursor ? injector.makeSession() : nil
         do {
-            _ = try await cleanup.clean(
+            let full = try await cleanup.clean(
                 raw: raw,
                 endpoint: settings.ollamaEndpoint,
                 model: settings.ollamaModel,
                 style: settings.formattingStyle,
-                onDelta: { session.feed($0) }
+                context: targetContext,
+                onDelta: { session?.feed($0) }
             )
-            session.finish()
+            session?.finish()
+            return full.isEmpty ? raw : full
         } catch {
-            // Ollama unavailable or failed: fall back to the raw transcript if nothing pasted yet.
-            if session.pastedAny {
-                session.finish()
-            } else {
-                injector.injectAtCursor(raw)
+            NSLog("[Cobalt] Cleanup failed, falling back to raw: \(error.localizedDescription)")
+            if let session {
+                if session.pastedAny { session.finish() } else { injector.injectAtCursor(raw) }
             }
+            return raw
+        }
+    }
+
+    private func scheduleCopiedReset() {
+        copiedResetTask?.cancel()
+        copiedResetTask = Task {
+            try? await Task.sleep(nanoseconds: 2_200_000_000)
+            if state == .copied { state = .idle }
         }
     }
 

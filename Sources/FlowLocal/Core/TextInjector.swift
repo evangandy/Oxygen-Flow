@@ -1,13 +1,52 @@
 import AppKit
+import ApplicationServices
 import CoreGraphics
 
 /// Inserts text into whatever app is focused by writing to the pasteboard and synthesizing
 /// Cmd+V. Supports a one-shot paste and a progressive (sentence-chunked) streaming session so
 /// long dictations appear as they are generated. The original clipboard is restored at the end.
+/// When no editable field is focused, callers should fall back to `copyToClipboard` instead.
 final class TextInjector {
 
     private let pasteboard = NSPasteboard.general
     private let vKeyCode: CGKeyCode = 9
+
+    /// Whether the currently focused UI element can accept typed text. Used to decide between
+    /// pasting at the cursor and simply copying to the clipboard. Requires Accessibility.
+    static func focusedElementIsEditable() -> Bool {
+        let system = AXUIElementCreateSystemWide()
+        var focused: AnyObject?
+        guard AXUIElementCopyAttributeValue(system, kAXFocusedUIElementAttribute as CFString, &focused) == .success,
+              let raw = focused,
+              CFGetTypeID(raw) == AXUIElementGetTypeID() else { return false }
+        let element = raw as! AXUIElement
+
+        var roleValue: AnyObject?
+        AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleValue)
+        let role = roleValue as? String
+        let editableRoles: Set<String> = [
+            kAXTextFieldRole as String,
+            kAXTextAreaRole as String,
+            kAXComboBoxRole as String,
+        ]
+        if let role, editableRoles.contains(role) { return true }
+
+        // Web/native rich editors: treat a settable AXValue as editable.
+        var settable: DarwinBoolean = false
+        if AXUIElementIsAttributeSettable(element, kAXValueAttribute as CFString, &settable) == .success,
+           settable.boolValue {
+            return true
+        }
+        return false
+    }
+
+    /// Place text on the clipboard for the user to paste manually. Does NOT restore the
+    /// previous clipboard — the whole point is that the dictation stays available to paste.
+    func copyToClipboard(_ text: String) {
+        guard !text.isEmpty else { return }
+        pasteboard.clearContents()
+        pasteboard.setString(text, forType: .string)
+    }
 
     /// One-shot: paste the whole string, then restore the previous clipboard.
     func injectAtCursor(_ text: String) {
