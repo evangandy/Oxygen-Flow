@@ -37,12 +37,12 @@ struct MainWindowView: View {
             }
         }
         .frame(minWidth: 820, minHeight: 560)
-        .tint(Cobalt.blue)
+        .tint(Palette.accent)
     }
 
     private var brandHeader: some View {
         HStack(spacing: 10) {
-            CobaltMark(size: 28)
+            AppMark(size: 28)
             Text("Oxygen Flow").font(.headline)
             Spacer()
         }
@@ -88,7 +88,7 @@ struct DashboardView: View {
         VStack(spacing: 16) {
             Image(systemName: controller.state == .listening ? "waveform" : "mic.fill")
                 .font(.system(size: 40))
-                .foregroundStyle(controller.state == .listening ? Color.red : Cobalt.blue)
+                .foregroundStyle(controller.state == .listening ? Palette.accent : Color.primary)
                 .symbolEffect(.pulse, isActive: controller.state == .listening)
                 .frame(height: 60)
 
@@ -102,7 +102,7 @@ struct DashboardView: View {
                     .frame(minWidth: 150)
             }
             .buttonStyle(.borderedProminent)
-            .tint(controller.state == .listening ? .red : Cobalt.blue)
+            .tint(controller.state == .listening ? Color.primary : Palette.accent)
             .controlSize(.large)
             .disabled(!controller.isReady && controller.state == .idle)
 
@@ -266,7 +266,7 @@ struct InsightsView: View {
                     Chart(store.lastDays(14)) { day in
                         BarMark(x: .value("Day", day.date, unit: .day),
                                 y: .value("Words", day.words))
-                            .foregroundStyle(Cobalt.blue)
+                            .foregroundStyle(Palette.accent)
                     }
                     .frame(height: 180)
                     .chartXAxis {

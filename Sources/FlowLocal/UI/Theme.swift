@@ -1,22 +1,20 @@
 import SwiftUI
 
-/// Minimal tokens. The only brand color is the cobalt blue; everything else in the app uses
-/// plain default SwiftUI styling. (The floating chip reuses a few of these for its look.)
-enum Cobalt {
-    static let blue = Color(red: 31/255, green: 43/255, blue: 224/255)          // #1f2be0
-    // Chip-only tokens (kept because the chip design uses them).
-    static let paper = Color(red: 240/255, green: 235/255, blue: 222/255)       // #f0ebde
-    static let ink = blue
-    static let inkMuted = Color(red: 85/255, green: 96/255, blue: 229/255)      // #5560e5
-    static let danger = Color(red: 178/255, green: 59/255, blue: 59/255)        // #b23b3b
-    static let rule = blue.opacity(0.22)
+/// Minimal palette. Oxygen Flow is black-and-white with a single small accent — a Bahama teal.
+/// Everything else uses plain default SwiftUI styling.
+enum Palette {
+    static let accent = Color(red: 20/255, green: 180/255, blue: 200/255) // Bahama teal ~#14B4C8
+    static let danger = Color(red: 178/255, green: 59/255, blue: 59/255)
 
-    /// Icon gradient — depth around the brand blue #1f2be0.
-    static let gradient = LinearGradient(
-        colors: [Color(red: 54/255, green: 68/255, blue: 238/255),
-                 Color(red: 20/255, green: 26/255, blue: 156/255)],
-        startPoint: .top, endPoint: .bottom
+    // App icon: near-black squircle behind the teal chevron.
+    static let iconGradient = LinearGradient(
+        colors: [Color(white: 0.12), .black], startPoint: .top, endPoint: .bottom
     )
+
+    // Chip: white capsule, black text, faint rule.
+    static let chipBG = Color.white
+    static let chipFG = Color.black
+    static let chipRule = Color.black.opacity(0.10)
 }
 
 /// A single chevron ">".
@@ -34,17 +32,17 @@ struct ChevronShape: Shape {
     }
 }
 
-/// The Oxygen Flow app mark: blue squircle + a single white chevron.
-struct CobaltMark: View {
+/// The Oxygen Flow app mark: near-black squircle + a single teal chevron.
+struct AppMark: View {
     var size: CGFloat = 40
 
     var body: some View {
         ChevronShape()
             .stroke(style: StrokeStyle(lineWidth: size * 0.12, lineCap: .round, lineJoin: .round))
-            .foregroundStyle(.white)
+            .foregroundStyle(Palette.accent)
             .padding(size * 0.26)
             .frame(width: size, height: size)
-            .background(Cobalt.gradient)
+            .background(Palette.iconGradient)
             .clipShape(RoundedRectangle(cornerRadius: size * 0.235, style: .continuous))
     }
 }
@@ -53,7 +51,6 @@ struct CobaltMark: View {
 struct StatCard: View {
     let value: String
     let label: String
-    var systemImage: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {

@@ -30,8 +30,8 @@ let squircle = CGPath(roundedRect: rect, cornerWidth: corner, cornerHeight: corn
 ctx.saveGState()
 ctx.addPath(squircle)
 ctx.clip()
-let top = rgb(54, 68, 238)       // cobalt (brand #1f2be0, lightened)
-let bottom = rgb(20, 26, 156)    // deep cobalt
+let top = rgb(30, 30, 32)        // near-black (subtle gloss)
+let bottom = rgb(0, 0, 0)        // black
 let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
                       colors: [top, bottom] as CFArray, locations: [0, 1])!
 ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: S), end: CGPoint(x: 0, y: 0), options: [])
@@ -55,7 +55,7 @@ chevron.move(to: CGPoint(x: apex - armW, y: cy + halfH))
 chevron.addLine(to: CGPoint(x: apex,          y: cy))
 chevron.addLine(to: CGPoint(x: apex - armW, y: cy - halfH))
 
-ctx.setStrokeColor(CGColor(red: 1, green: 1, blue: 1, alpha: 1))
+ctx.setStrokeColor(rgb(20, 180, 200)) // Bahama teal accent
 ctx.setLineWidth(lineW)
 ctx.setLineCap(.round)
 ctx.setLineJoin(.round)

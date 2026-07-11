@@ -10,7 +10,7 @@ final class ChipPresenter: ObservableObject {
     @Published var state: DictationController.State = .idle
 }
 
-/// The floating chip — small, clean, cobalt-grid themed. Shows only the live waveform while
+/// The floating chip — small, clean, black-and-white with a teal accent. Shows only the live waveform while
 /// listening, with a cancel (✕) and confirm (✓) button. No transcript is shown.
 struct PillView: View {
     @ObservedObject var controller: DictationController
@@ -23,12 +23,12 @@ struct PillView: View {
             .frame(height: 34)
             .background(
                 Capsule(style: .continuous)
-                    .fill(Cobalt.paper)
-                    .shadow(color: Cobalt.ink.opacity(0.18), radius: 14, y: 5)
+                    .fill(Palette.chipBG)
+                    .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
             )
             .overlay(
                 Capsule(style: .continuous)
-                    .strokeBorder(Cobalt.rule, lineWidth: 1)
+                    .strokeBorder(Palette.chipRule, lineWidth: 1)
             )
             .fixedSize()
             .animation(.spring(response: 0.34, dampingFraction: 0.82), value: presenter.state)
@@ -43,28 +43,28 @@ struct PillView: View {
         switch presenter.state {
         case .listening:
             HStack(spacing: 8) {
-                ChipButton(system: "xmark", tint: Cobalt.inkMuted) { controller.cancel() }
+                ChipButton(system: "xmark", tint: Palette.chipFG.opacity(0.5)) { controller.cancel() }
                 Waveform(level: controller.level)
-                    .frame(width: 48, height: 18)
+                    .frame(width: 58, height: 24)
                 ChipButton(system: "checkmark", tint: .white, filled: true) { controller.toggle() }
             }
         case .transcribing, .cleaning:
             HStack(spacing: 8) {
-                ProgressView().controlSize(.small).tint(Cobalt.ink)
+                ProgressView().controlSize(.small).tint(Palette.chipFG)
                 Text(presenter.state == .cleaning ? "Formatting" : "Transcribing").chipLabel()
             }
         case .copied:
             HStack(spacing: 7) {
                 Image(systemName: "checkmark.circle.fill")
                     .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Cobalt.ink)
+                    .foregroundStyle(Palette.accent)
                 Text("Copied · ⌘V to paste").chipLabel()
             }
         case .error(let msg):
             HStack(spacing: 7) {
                 Image(systemName: "exclamationmark.triangle.fill")
                     .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Cobalt.danger)
+                    .foregroundStyle(Palette.danger)
                 Text(msg).chipLabel().lineLimit(1).frame(maxWidth: 200)
             }
         case .idle:
@@ -88,8 +88,8 @@ private struct ChipButton: View {
                 .foregroundStyle(filled ? .white : tint)
                 .frame(width: 22, height: 22)
                 .background(
-                    Circle().fill(filled ? AnyShapeStyle(Cobalt.ink)
-                                         : AnyShapeStyle(Cobalt.ink.opacity(hovering ? 0.16 : 0.09)))
+                    Circle().fill(filled ? AnyShapeStyle(Palette.accent)
+                                         : AnyShapeStyle(Palette.chipFG.opacity(hovering ? 0.14 : 0.07)))
                 )
                 .scaleEffect(hovering ? 1.08 : 1)
         }
@@ -101,31 +101,41 @@ private struct ChipButton: View {
 private extension Text {
     func chipLabel() -> some View {
         self.font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(Cobalt.ink.opacity(0.85))
+            .foregroundStyle(Palette.chipFG.opacity(0.85))
     }
 }
 
-/// Minimal animated bar waveform driven by the live input level.
+/// A lively bar waveform: each bar oscillates on its own phase (a traveling wave) so the chip
+/// always has motion, and the amplitude grows with the live input level while speaking.
 struct Waveform: View {
     var level: Float
-    private let bars = 7
-    private static let weights: [CGFloat] = [0.35, 0.6, 0.85, 1.0, 0.85, 0.6, 0.35]
+    private let bars = 5
+    private let maxH: CGFloat = 22
 
     var body: some View {
-        HStack(spacing: 2.5) {
-            ForEach(0..<bars, id: \.self) { i in
-                RoundedRectangle(cornerRadius: 1.5)
-                    .fill(Cobalt.ink.opacity(0.85))
-                    .frame(width: 2.5, height: barHeight(weight: Waveform.weights[i]))
+        // A smoothed, floored level so quiet speech still animates and loud speech is capped.
+        let lvl = CGFloat(min(1.0, max(0.06, level)))
+        TimelineView(.animation) { timeline in
+            let t = timeline.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 3) {
+                ForEach(0..<bars, id: \.self) { i in
+                    Capsule()
+                        .fill(Palette.accent)
+                        .frame(width: 3.5, height: height(bar: i, time: t, level: lvl))
+                }
             }
         }
-        .animation(.easeOut(duration: 0.1), value: level)
     }
 
-    private func barHeight(weight: CGFloat) -> CGFloat {
-        let base: CGFloat = 3
-        let dynamic = CGFloat(level) * 16 * weight
-        return max(base, min(18, base + dynamic))
+    private func height(bar i: Int, time t: Double, level lvl: CGFloat) -> CGFloat {
+        let phase = Double(i) * 1.15
+        // Two overlaid sines at different speeds give an organic, non-repetitive motion.
+        let fast = (sin(t * 9.0 + phase) + 1) / 2
+        let slow = (sin(t * 3.3 + phase * 0.7) + 1) / 2
+        let wave = fast * 0.7 + slow * 0.3               // 0...1
+        let amplitude = 0.16 + lvl * 2.0                 // idle breathing → big when speaking
+        let h = 3 + CGFloat(wave) * amplitude * maxH
+        return max(3, min(maxH, h))
     }
 }
 
