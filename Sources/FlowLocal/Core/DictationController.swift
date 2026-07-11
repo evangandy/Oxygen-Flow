@@ -80,7 +80,14 @@ final class DictationController: ObservableObject {
         // Periodically retry the event tap in case the user grants permission after launch.
         startAccessibilityRetryTimer()
 
+        // Make sure Ollama is up (start it if needed), then warm the model. Warm again shortly
+        // after in case we just launched the server and it wasn't ready on the first try.
+        OllamaLauncher.ensureRunning(endpoint: settings.ollamaEndpoint)
         cleanup.warmUp(endpoint: settings.ollamaEndpoint, model: settings.ollamaModel)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
+            guard let self else { return }
+            self.cleanup.warmUp(endpoint: self.settings.ollamaEndpoint, model: self.settings.ollamaModel)
+        }
 
         // Load whisper off the main thread; mark ready when done.
         let path = settings.whisperModelPath

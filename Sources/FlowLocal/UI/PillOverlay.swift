@@ -45,7 +45,7 @@ struct PillView: View {
             HStack(spacing: 8) {
                 ChipButton(system: "xmark", tint: Palette.chipFG.opacity(0.5)) { controller.cancel() }
                 Waveform(level: controller.level)
-                    .frame(width: 58, height: 24)
+                    .frame(width: 78, height: 24)
                 ChipButton(system: "checkmark", tint: .white, filled: true) { controller.toggle() }
             }
         case .transcribing, .cleaning:
@@ -105,37 +105,37 @@ private extension Text {
     }
 }
 
-/// A lively bar waveform: each bar oscillates on its own phase (a traveling wave) so the chip
-/// always has motion, and the amplitude grows with the live input level while speaking.
+/// A scrolling level meter, like Wispr Flow: thin bars, each holding the mic level from a moment
+/// in time. New samples push in on the right and scroll left, so the shape genuinely reflects
+/// your voice (no artificial motion).
 struct Waveform: View {
     var level: Float
-    private let bars = 5
+    private let barCount = 20
     private let maxH: CGFloat = 22
+    private let minH: CGFloat = 2
+
+    @State private var history: [CGFloat] = Array(repeating: 0, count: 20)
+    private let tick = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        // A smoothed, floored level so quiet speech still animates and loud speech is capped.
-        let lvl = CGFloat(min(1.0, max(0.06, level)))
-        TimelineView(.animation) { timeline in
-            let t = timeline.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 3) {
-                ForEach(0..<bars, id: \.self) { i in
-                    Capsule()
-                        .fill(Palette.accent)
-                        .frame(width: 3.5, height: height(bar: i, time: t, level: lvl))
-                }
+        HStack(spacing: 2) {
+            ForEach(0..<barCount, id: \.self) { i in
+                Capsule()
+                    .fill(Palette.accent)
+                    .frame(width: 2, height: barHeight(history[i]))
             }
         }
+        .onReceive(tick) { _ in
+            history.removeFirst()
+            history.append(CGFloat(level))
+        }
+        .animation(.linear(duration: 0.05), value: history)
     }
 
-    private func height(bar i: Int, time t: Double, level lvl: CGFloat) -> CGFloat {
-        let phase = Double(i) * 1.15
-        // Two overlaid sines at different speeds give an organic, non-repetitive motion.
-        let fast = (sin(t * 9.0 + phase) + 1) / 2
-        let slow = (sin(t * 3.3 + phase * 0.7) + 1) / 2
-        let wave = fast * 0.7 + slow * 0.3               // 0...1
-        let amplitude = 0.16 + lvl * 2.0                 // idle breathing → big when speaking
-        let h = 3 + CGFloat(wave) * amplitude * maxH
-        return max(3, min(maxH, h))
+    private func barHeight(_ v: CGFloat) -> CGFloat {
+        // Boost quiet levels (perceptual curve) and use the full height for a big amplitude range.
+        let shaped = pow(min(1, v * 1.4), 0.6)
+        return minH + shaped * (maxH - minH)
     }
 }
 
