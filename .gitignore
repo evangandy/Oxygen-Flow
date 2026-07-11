@@ -1,0 +1,7 @@
+.build/
+FlowLocal.app
+.DS_Store
+vendor/whisper.cpp/build/
+models/
+*.bin
+*.wav
