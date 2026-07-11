@@ -34,7 +34,7 @@ struct ChevronShape: Shape {
     }
 }
 
-/// The Cobalt Flow app mark: blue squircle + a single white chevron.
+/// The Oxygen Flow app mark: blue squircle + a single white chevron.
 struct CobaltMark: View {
     var size: CGFloat = 40
 

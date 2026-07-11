@@ -174,7 +174,7 @@ final class DictationController: ObservableObject {
     private func stopAndProcess() {
         // Remember which app to deliver into (and its formatting context) before we hide.
         if let front = NSWorkspace.shared.frontmostApplication?.localizedName,
-           front != "Cobalt Flow" {
+           front != "Oxygen Flow" {
             targetAppName = front
         }
         targetContext = settings.contextAwareFormatting ? AppContext.detect() : .general

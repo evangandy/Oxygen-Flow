@@ -1,5 +1,5 @@
 #!/bin/bash
-# Regenerate the Cobalt Flow app icon (Resources/AppIcon.icns) from the vector
+# Regenerate the Oxygen Flow app icon (Resources/AppIcon.icns) from the vector
 # drawing in make_icon.swift. Run from the project root: scripts/make_icon.sh
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"

@@ -1,4 +1,4 @@
-# Cobalt Flow
+# Oxygen Flow
 
 **A completely free, fully offline version of [Wispr Flow](https://wisprflow.ai).** AI voice
 dictation that works in any app, running **100% on your Mac** — no login, no account, no cloud,
@@ -11,7 +11,7 @@ focused, the result is placed on your clipboard instead, ready to paste.
 
 > The Swift package/module and executable are still named `FlowLocal` internally (renaming the
 > SwiftPM target is a mechanical follow-up); everything user-facing — the app, icon, window, and
-> menu bar — is **Cobalt Flow**.
+> menu bar — is **Oxygen Flow**.
 
 ## Features
 
@@ -71,12 +71,12 @@ first-token 0.22s, cleanup total 0.55s.
 ./scripts/build_app.sh release
 
 # 4. Launch
-open "Cobalt Flow.app"
+open "Oxygen Flow.app"
 ```
 
 On first launch, grant:
 - **Microphone** (prompted on first dictation).
-- **Accessibility** — System Settings → Privacy & Security → Accessibility → enable Cobalt Flow.
+- **Accessibility** — System Settings → Privacy & Security → Accessibility → enable Oxygen Flow.
   Required for the global hotkey and for pasting into other apps. Use the menu-bar item's
   "Grant Accessibility & Retry" if the hotkey isn't responding.
 

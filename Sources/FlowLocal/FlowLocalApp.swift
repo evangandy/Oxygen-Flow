@@ -64,7 +64,7 @@ struct MenuContent: View {
 
         Button("Settings…") { openSettings() }
             .keyboardShortcut(",", modifiers: .command)
-        Button("Quit Cobalt Flow") { NSApp.terminate(nil) }
+        Button("Quit Oxygen Flow") { NSApp.terminate(nil) }
             .keyboardShortcut("q", modifiers: .command)
     }
 

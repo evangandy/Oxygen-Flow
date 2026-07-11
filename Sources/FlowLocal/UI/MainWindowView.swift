@@ -43,7 +43,7 @@ struct MainWindowView: View {
     private var brandHeader: some View {
         HStack(spacing: 10) {
             CobaltMark(size: 28)
-            Text("Cobalt Flow").font(.headline)
+            Text("Oxygen Flow").font(.headline)
             Spacer()
         }
         .padding(.horizontal, 12)
@@ -296,7 +296,7 @@ struct InsightsView: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Label("Smarter insights are coming", systemImage: "sparkles")
                             .font(.headline)
-                        Text("Because your whole history can grow to 100k+ words — far more than a local model can read at once — Cobalt Flow will build insights incrementally: each dictation gets a one-line AI summary the moment it's saved (a few hundred milliseconds, in the background), and those summaries roll up into themes. Nothing is ever batched or uploaded.")
+                        Text("Because your whole history can grow to 100k+ words — far more than a local model can read at once — Oxygen Flow will build insights incrementally: each dictation gets a one-line AI summary the moment it's saved (a few hundred milliseconds, in the background), and those summaries roll up into themes. Nothing is ever batched or uploaded.")
                             .font(.callout).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }

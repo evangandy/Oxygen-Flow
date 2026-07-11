@@ -79,7 +79,7 @@ struct SettingsView: View {
         } header: {
             Text("Cleanup (Ollama)")
         } footer: {
-            Text("Cobalt Flow lists the models installed in your local Ollama. Smaller models (e.g. qwen2.5:3b-instruct) are faster; larger ones format better. Nothing leaves your Mac.")
+            Text("Oxygen Flow lists the models installed in your local Ollama. Smaller models (e.g. qwen2.5:3b-instruct) are faster; larger ones format better. Nothing leaves your Mac.")
                 .font(.caption).foregroundStyle(.secondary)
         }
     }

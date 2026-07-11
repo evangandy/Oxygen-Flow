@@ -1,5 +1,5 @@
 #!/usr/bin/env swift
-// Generates the Cobalt Flow app icon: a rounded "squircle" in a cobalt gradient
+// Generates the Oxygen Flow app icon: a rounded "squircle" in a cobalt-blue gradient
 // with two white chevrons (»), reading as flow / motion.
 // Renders a 1024px master PNG, then builds AppIcon.icns via `sips` + `iconutil`.
 //

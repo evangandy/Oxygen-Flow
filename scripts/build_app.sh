@@ -1,5 +1,5 @@
 #!/bin/bash
-# Build Cobalt Flow and assemble a signed .app bundle.
+# Build Oxygen Flow and assemble a signed .app bundle.
 # Usage: scripts/build_app.sh [debug|release]
 set -euo pipefail
 
@@ -11,11 +11,11 @@ echo "==> swift build ($CONFIG)"
 swift build -c "$CONFIG"
 
 BIN="$(swift build -c "$CONFIG" --show-bin-path)/FlowLocal"
-APP="$ROOT/Cobalt Flow.app"
+APP="$ROOT/Oxygen Flow.app"
 CONTENTS="$APP/Contents"
 
 echo "==> assembling $APP"
-rm -rf "$APP" "$ROOT/FlowLocal.app"
+rm -rf "$APP" "$ROOT/FlowLocal.app" "$ROOT/Cobalt Flow.app"
 mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN" "$CONTENTS/MacOS/FlowLocal"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
