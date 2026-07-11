@@ -45,7 +45,7 @@ struct PillView: View {
             HStack(spacing: 8) {
                 ChipButton(system: "xmark", tint: Palette.chipFG.opacity(0.5)) { controller.cancel() }
                 Waveform(level: controller.level)
-                    .frame(width: 78, height: 24)
+                    .frame(width: 76, height: 24)
                 ChipButton(system: "checkmark", tint: .white, filled: true) { controller.toggle() }
             }
         case .transcribing, .cleaning:
@@ -105,36 +105,37 @@ private extension Text {
     }
 }
 
-/// A scrolling level meter, like Wispr Flow: thin bars, each holding the mic level from a moment
-/// in time. New samples push in on the right and scroll left, so the shape genuinely reflects
-/// your voice (no artificial motion).
+/// A scrolling level meter, like Wispr Flow: a few rounded bars, each holding the mic level from
+/// a moment in time. New samples push in on the right and scroll left, and each bar springs to
+/// its new height with a little bounce, so the shape reflects your voice with real flow.
 struct Waveform: View {
     var level: Float
-    private let barCount = 20
+    private let barCount = 13
     private let maxH: CGFloat = 22
-    private let minH: CGFloat = 2
+    private let minH: CGFloat = 3
 
-    @State private var history: [CGFloat] = Array(repeating: 0, count: 20)
-    private let tick = Timer.publish(every: 0.05, on: .main, in: .common).autoconnect()
+    @State private var history: [CGFloat] = Array(repeating: 0, count: 13)
+    private let tick = Timer.publish(every: 0.06, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(spacing: 2) {
+        HStack(spacing: 3) {
             ForEach(0..<barCount, id: \.self) { i in
                 Capsule()
                     .fill(Palette.accent)
-                    .frame(width: 2, height: barHeight(history[i]))
+                    .frame(width: 3, height: barHeight(history[i]))
             }
         }
         .onReceive(tick) { _ in
             history.removeFirst()
             history.append(CGFloat(level))
         }
-        .animation(.linear(duration: 0.05), value: history)
+        // Under-damped spring → the bars overshoot slightly and settle: the "bounce" feel.
+        .animation(.spring(response: 0.34, dampingFraction: 0.55), value: history)
     }
 
     private func barHeight(_ v: CGFloat) -> CGFloat {
         // Boost quiet levels (perceptual curve) and use the full height for a big amplitude range.
-        let shaped = pow(min(1, v * 1.4), 0.6)
+        let shaped = pow(min(1, v * 1.5), 0.55)
         return minH + shaped * (maxH - minH)
     }
 }
