@@ -1,4 +1,5 @@
 import AppKit
+import ServiceManagement
 import SwiftUI
 
 struct FlowLocalApp: App {
@@ -30,6 +31,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Regular app with Dock icon and main window
         NSApp.setActivationPolicy(.regular)
         pill = PillWindowController(controller: controller)
+
+        // Honor the launch-at-login preference (the installer sets it on).
+        if AppSettings.shared.launchAtLogin {
+            try? SMAppService.mainApp.register()
+        }
+
         controller.bootstrap()
     }
 }
