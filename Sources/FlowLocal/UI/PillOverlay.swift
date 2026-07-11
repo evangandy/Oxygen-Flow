@@ -2,36 +2,51 @@ import AppKit
 import Combine
 import SwiftUI
 
-/// The floating "pill" content: shows listening waveform, processing spinner, or an error flash.
+/// The floating pill — minimalist, Wispr Flow–inspired overlay.
 struct PillView: View {
     @ObservedObject var controller: DictationController
+    @State private var glowPulse = false
 
     var body: some View {
-        HStack(spacing: 12) {
-            icon
+        HStack(spacing: 10) {
+            indicator
             content
         }
-        .padding(.horizontal, 18)
-        .padding(.vertical, 12)
-        .frame(minWidth: 150)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
+        .frame(minWidth: 120)
         .background(
             Capsule(style: .continuous)
-                .fill(.black.opacity(0.82))
-                .overlay(Capsule(style: .continuous).stroke(.white.opacity(0.08), lineWidth: 1))
+                .fill(.ultraThinMaterial)
+                .environment(\.colorScheme, .dark)
         )
-        .shadow(color: .black.opacity(0.35), radius: 14, y: 6)
+        .overlay(
+            Capsule(style: .continuous)
+                .strokeBorder(
+                    LinearGradient(
+                        colors: [.white.opacity(0.15), .white.opacity(0.05)],
+                        startPoint: .top, endPoint: .bottom
+                    ),
+                    lineWidth: 0.5
+                )
+        )
+        .shadow(color: .black.opacity(0.25), radius: 20, y: 8)
         .fixedSize()
+        .animation(.spring(response: 0.35, dampingFraction: 0.8), value: controller.state)
     }
 
-    @ViewBuilder private var icon: some View {
+    @ViewBuilder private var indicator: some View {
         switch controller.state {
         case .listening:
-            Circle().fill(.red).frame(width: 10, height: 10)
-                .shadow(color: .red.opacity(0.8), radius: 4)
+            EmptyView()
         case .transcribing, .cleaning:
-            ProgressView().controlSize(.small).tint(.white)
+            ProgressView()
+                .controlSize(.small)
+                .tint(.white.opacity(0.7))
         case .error:
-            Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.yellow)
+            Image(systemName: "exclamationmark.circle")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(.orange)
         case .idle:
             EmptyView()
         }
@@ -42,20 +57,27 @@ struct PillView: View {
         case .listening:
             if !controller.partialTranscript.isEmpty {
                 Text(controller.partialTranscript)
-                    .pillLabel()
+                    .font(.system(size: 13, weight: .regular, design: .rounded))
+                    .foregroundStyle(.white.opacity(0.85))
                     .lineLimit(1)
                     .truncationMode(.head)
-                    .frame(maxWidth: 250, alignment: .trailing)
+                    .frame(maxWidth: 280, alignment: .trailing)
+                    .animation(.easeOut(duration: 0.15), value: controller.partialTranscript)
             } else {
                 Waveform(level: controller.level)
-                    .frame(width: 90, height: 22)
+                    .frame(width: 60, height: 16)
             }
         case .transcribing:
-            Text("Transcribing…").pillLabel()
+            Text("Transcribing")
+                .pillLabel()
         case .cleaning:
-            Text("Formatting…").pillLabel()
+            Text("Formatting")
+                .pillLabel()
         case .error(let msg):
-            Text(msg).pillLabel().lineLimit(1).frame(maxWidth: 220)
+            Text(msg)
+                .pillLabel()
+                .lineLimit(1)
+                .frame(maxWidth: 220)
         case .idle:
             EmptyView()
         }
@@ -64,33 +86,33 @@ struct PillView: View {
 
 private extension View {
     func pillLabel() -> some View {
-        self.font(.system(size: 13, weight: .medium)).foregroundStyle(.white)
+        self.font(.system(size: 13, weight: .regular, design: .rounded))
+            .foregroundStyle(.white.opacity(0.7))
     }
 }
 
-/// Simple animated bar waveform driven by the live input level.
+/// Minimal animated bar waveform.
 struct Waveform: View {
     var level: Float
-    private let bars = 13
-    // Per-bar multipliers give the classic center-weighted shape.
-    private static let weights: [CGFloat] = [0.35, 0.5, 0.65, 0.8, 0.95, 1.0, 1.0, 1.0, 0.95, 0.8, 0.65, 0.5, 0.35]
+    private let bars = 5
+    private static let weights: [CGFloat] = [0.5, 0.8, 1.0, 0.8, 0.5]
 
     var body: some View {
         HStack(spacing: 3) {
             ForEach(0..<bars, id: \.self) { i in
-                let w = Waveform.weights[i % Waveform.weights.count]
-                Capsule()
-                    .fill(.white.opacity(0.9))
-                    .frame(width: 3, height: barHeight(weight: w))
+                let w = Waveform.weights[i]
+                RoundedRectangle(cornerRadius: 1.5)
+                    .fill(.white.opacity(0.6))
+                    .frame(width: 2.5, height: barHeight(weight: w))
             }
         }
-        .animation(.easeOut(duration: 0.08), value: level)
+        .animation(.easeOut(duration: 0.1), value: level)
     }
 
     private func barHeight(weight: CGFloat) -> CGFloat {
         let base: CGFloat = 3
-        let dynamic = CGFloat(level) * 22 * weight
-        return max(base, min(22, base + dynamic))
+        let dynamic = CGFloat(level) * 14 * weight
+        return max(base, min(16, base + dynamic))
     }
 }
 

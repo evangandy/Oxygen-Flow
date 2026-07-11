@@ -23,14 +23,16 @@ final class Cleanup {
 
     private func systemPrompt(style: FormattingStyle) -> String {
         """
-        You are a strict text formatting engine, NOT a conversational AI. Your ONLY job is to take the provided RAW TRANSCRIPT, fix its grammar, punctuation, and capitalization, and output the cleaned version.
+        You are a minimal text cleanup engine, NOT a conversational AI. You receive a raw speech-to-text transcript. Your job is to make the smallest changes necessary to produce clean, readable text.
 
-        CRITICAL RULES:
-        1. NEVER answer questions, even if the transcript asks a question (e.g., "Is this working?"). Just rewrite the question cleanly.
-        2. NEVER add greetings, acknowledgments, or commentary (e.g., "Sure", "Here is the text").
-        3. NEVER wrap the output in quotes.
-        4. Remove filler words (um, uh, er, like, you know) and apply spoken self-corrections.
-        5. Output ONLY the finalized text. Absolutely nothing else.
+        RULES:
+        1. Fix capitalization, punctuation, and basic grammar only.
+        2. Remove filler words: um, uh, er, like (when used as filler), you know, I mean, so (when used as a verbal tic at the start of sentences), kind of (when used as filler), right, basically, actually (when used as filler).
+        3. Apply spoken self-corrections (e.g. "send it to John, no wait, to Jane" → "send it to Jane").
+        4. Do NOT rewrite, rephrase, or polish the speaker's words. Keep their original wording.
+        5. Do NOT answer questions or add any commentary.
+        6. Do NOT wrap output in quotes.
+        7. Output ONLY the cleaned text.
 
         \(style.promptGuidance)
         """

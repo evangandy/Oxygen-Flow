@@ -33,6 +33,7 @@ final class DictationController: ObservableObject {
     private var inferenceLoopTask: Task<Void, Never>?
 
     private var cancellables = Set<AnyCancellable>()
+    private var accessibilityTimer: Timer?
     private let inferenceQueue = DispatchQueue(label: "flowlocal.inference", qos: .userInitiated)
 
     init() {
@@ -48,25 +49,40 @@ final class DictationController: ObservableObject {
 
     /// Called once at launch: request permissions, start the hotkey, warm the models.
     func bootstrap() {
-        AudioRecorder.requestMicrophonePermission { _ in }
+        NSLog("[FlowLocal] bootstrap() starting")
+        NSLog("[FlowLocal] AXIsProcessTrusted = \(HotkeyManager.hasAccessibilityPermission)")
+        
+        AudioRecorder.requestMicrophonePermission { granted in
+            NSLog("[FlowLocal] Microphone permission: \(granted)")
+        }
 
         if !HotkeyManager.hasAccessibilityPermission {
+            NSLog("[FlowLocal] Accessibility NOT granted — requesting prompt")
             HotkeyManager.requestAccessibilityPermission()
         }
-        if !hotkey.start() {
+        
+        let tapOk = hotkey.start()
+        NSLog("[FlowLocal] hotkey.start() = \(tapOk)")
+        if !tapOk {
             lastError = "Grant Accessibility permission, then relaunch."
         }
+        
+        // Periodically retry the event tap in case the user grants permission after launch.
+        startAccessibilityRetryTimer()
 
         cleanup.warmUp(endpoint: settings.ollamaEndpoint, model: settings.ollamaModel)
 
         // Load whisper off the main thread; mark ready when done.
         let path = settings.whisperModelPath
+        NSLog("[FlowLocal] Loading whisper model from: \(path)")
         inferenceQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.transcriber.loadModel(at: path)
+                NSLog("[FlowLocal] Whisper model loaded OK")
                 Task { @MainActor in self.isReady = true }
             } catch {
+                NSLog("[FlowLocal] Whisper model FAILED: \(error)")
                 Task { @MainActor in
                     self.lastError = error.localizedDescription
                     self.state = .error(error.localizedDescription)
@@ -74,15 +90,44 @@ final class DictationController: ObservableObject {
             }
         }
     }
+    
+    /// Retry connecting the event tap every 2 seconds until it succeeds.
+    private func startAccessibilityRetryTimer() {
+        accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
+            guard let self else { timer.invalidate(); return }
+            Task { @MainActor in
+                let trusted = HotkeyManager.hasAccessibilityPermission
+                if trusted {
+                    let ok = self.hotkey.start()
+                    if ok {
+                        NSLog("[FlowLocal] ✅ Event tap connected successfully!")
+                        self.lastError = nil
+                        timer.invalidate()
+                        self.accessibilityTimer = nil
+                    } else {
+                        NSLog("[FlowLocal] AX trusted but tap failed — will retry")
+                    }
+                }
+            }
+        }
+    }
 
     /// Re-check the hotkey tap after the user grants Accessibility (from the menu).
     func retryHotkey() {
-        if hotkey.start() { lastError = nil }
+        NSLog("[FlowLocal] retryHotkey() — AX trusted: \(HotkeyManager.hasAccessibilityPermission)")
+        // Toggle the accessibility list: remove and re-add to force macOS to re-evaluate
+        if hotkey.start() {
+            NSLog("[FlowLocal] ✅ retryHotkey succeeded")
+            lastError = nil
+        } else {
+            NSLog("[FlowLocal] ❌ retryHotkey failed")
+        }
     }
 
     // MARK: - Toggle
 
     func toggle() {
+        NSLog("[FlowLocal] toggle() — current state: \(state)")
         switch state {
         case .idle, .error:
             startListening()
@@ -146,12 +191,16 @@ final class DictationController: ObservableObject {
         Task {
             do {
                 let raw = try await transcribeAsync(samples)
-                guard !raw.isEmpty else { state = .idle; return }
+                NSLog("[FlowLocal] Transcription result: '\(raw)'")
+                guard !raw.isEmpty else { NSLog("[FlowLocal] Empty transcription, returning to idle"); state = .idle; return }
 
                 if settings.cleanupEnabled {
                     state = .cleaning
+                    NSLog("[FlowLocal] Starting cleanup…")
                     try await runCleanup(raw: raw)
+                    NSLog("[FlowLocal] Cleanup done")
                 } else {
+                    NSLog("[FlowLocal] Cleanup disabled, injecting raw text")
                     injector.injectAtCursor(raw)
                 }
                 state = .idle

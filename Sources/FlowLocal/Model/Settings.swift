@@ -12,7 +12,7 @@ enum FormattingStyle: String, CaseIterable, Identifiable {
     var promptGuidance: String {
         switch self {
         case .formal:
-            return "Use a professional, grammatically correct tone. Keep full sentences, proper capitalization, and terminal punctuation."
+            return "Enforce standard English grammar. Use proper sentence structure, correct subject-verb agreement, and appropriate punctuation. Do NOT change the speaker's vocabulary or rephrase their ideas. Keep their words, just make them grammatically correct."
         case .casual:
             return "Use a natural, conversational tone. Correct grammar but keep it relaxed. Trailing periods on single sentences may be dropped."
         case .veryCasual:

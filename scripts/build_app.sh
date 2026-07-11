@@ -20,12 +20,12 @@ mkdir -p "$CONTENTS/MacOS" "$CONTENTS/Resources"
 cp "$BIN" "$CONTENTS/MacOS/FlowLocal"
 cp "$ROOT/Resources/Info.plist" "$CONTENTS/Info.plist"
 
-echo "==> ad-hoc codesign (with entitlements)"
-codesign --force --deep --sign - \
+echo "==> codesign with 'FlowLocal Dev' certificate (with entitlements)"
+codesign --force --deep --sign "FlowLocal Dev" \
   --entitlements "$ROOT/Resources/FlowLocal.entitlements" \
   --options runtime \
   "$APP" 2>/dev/null || \
-codesign --force --deep --sign - \
+codesign --force --deep --sign "FlowLocal Dev" \
   --entitlements "$ROOT/Resources/FlowLocal.entitlements" \
   "$APP"
 

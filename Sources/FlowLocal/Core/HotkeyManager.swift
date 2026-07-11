@@ -27,7 +27,7 @@ final class HotkeyManager {
     /// Start listening. Returns false if the tap could not be created (usually missing permission).
     @discardableResult
     func start() -> Bool {
-        guard eventTap == nil else { return true }
+        guard eventTap == nil else { NSLog("[HotkeyMgr] tap already exists"); return true }
 
         let mask = CGEventMask(1 << CGEventType.keyDown.rawValue)
         let refcon = Unmanaged.passUnretained(self).toOpaque()
@@ -40,8 +40,10 @@ final class HotkeyManager {
             callback: HotkeyManager.eventCallback,
             userInfo: refcon
         ) else {
+            NSLog("[HotkeyMgr] ❌ CGEvent.tapCreate FAILED — Accessibility not granted")
             return false
         }
+        NSLog("[HotkeyMgr] ✅ CGEvent.tapCreate succeeded")
 
         let source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, tap, 0)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
@@ -66,6 +68,7 @@ final class HotkeyManager {
     /// Re-enable the tap if the system disabled it (can happen on timeout/user input flood).
     private func reenable() {
         if let tap = eventTap {
+            NSLog("[HotkeyMgr] Re-enabling event tap")
             CGEvent.tapEnable(tap: tap, enable: true)
         }
     }
@@ -86,6 +89,7 @@ final class HotkeyManager {
         let noOption = !flags.contains(.maskAlternate)
 
         if keyCode == tildeKeyCode && hasCtrl && noCmd && noOption {
+            NSLog("[HotkeyMgr] 🎯 Control+~ DETECTED — firing toggle")
             DispatchQueue.main.async { [weak self] in
                 self?.onToggle?()
             }
