@@ -11,9 +11,30 @@ cleaned up (grammar, punctuation, filler removal, formatting), and pasted at you
 
 **Requirement: Apple Silicon Mac (M1 or later), macOS 14+.**
 
-### If you have Claude Code (or a similar coding agent)
+### Clone it
 
-Clone the repo, then paste this to your agent:
+```bash
+git clone --recurse-submodules https://github.com/evangandy/Oxygen-Flow.git
+cd Oxygen-Flow
+```
+
+Then pick one:
+
+**One-click** — open the folder in Finder and **double-click `Install Oxygen Flow.command`.** It
+opens Terminal and runs the full setup for you. Takes a few minutes; the window shows progress.
+
+> First double-click, macOS may warn the file is from an unidentified developer (normal for any
+> script downloaded off the internet) — right-click it and choose **Open** once instead.
+
+**Terminal** — same thing, if you'd rather type it:
+
+```bash
+./make.sh
+```
+
+**Have Claude Code (or a similar agent)?** Paste it this instead of running the script yourself —
+it'll run `make.sh`, diagnose and fix anything that fails, and keep going until the app actually
+launches:
 
 > Set up Oxygen Flow on this Mac: run `./make.sh` to install everything (toolchain, Ollama, the
 > speech model, and the app itself), and if anything in it fails, fix it and re-run until it
@@ -22,26 +43,11 @@ Clone the repo, then paste this to your agent:
 > on every rebuild — and run `scripts/create_cert.sh` if it's missing. Then open the app and
 > confirm it launches.
 
-```bash
-git clone --recurse-submodules https://github.com/evangandy/Oxygen-Flow.git
-cd Oxygen-Flow
-```
-
-That's it — hand the rest to your agent. It can keep iterating on the app afterward too (rebuild,
-tweak settings, restart it) without you typing commands yourself.
-
-### Doing it yourself, no agent
-
-```bash
-git clone --recurse-submodules https://github.com/evangandy/Oxygen-Flow.git
-cd Oxygen-Flow
-./make.sh
-```
-
-`make.sh` does **everything**: installs the toolchain (Command Line Tools, Homebrew, cmake),
-installs & starts Ollama, pulls the cleanup model, downloads the Whisper speech model, creates a
-stable local code-signing certificate, builds the app, installs it to **/Applications**, enables
-it at login, and opens the permissions pane for you. Safe to re-run — it skips finished steps.
+Either way, `make.sh` does **everything**: installs the toolchain (Command Line Tools, Homebrew,
+cmake), installs & starts Ollama, pulls the cleanup model, downloads the Whisper speech model,
+creates a stable local code-signing certificate, builds the app, installs it to
+**/Applications**, enables it at login, and opens the permissions pane for you. Safe to re-run —
+it skips finished steps.
 
 ### Permissions (macOS asks once)
 
