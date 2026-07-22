@@ -33,6 +33,15 @@ if [ "$(uname -m)" != "arm64" ]; then
   echo "This installer targets Apple Silicon (arm64) Macs. Yours is $(uname -m)."; exit 1
 fi
 
+# ── 0b. vendor/whisper.cpp submodule ──────────────────────────────────────────
+# A plain `git clone` (without --recurse-submodules) leaves this as an empty
+# directory — self-heal it here so setup works regardless of how the repo was cloned.
+step "whisper.cpp source (git submodule)"
+if [ ! -f "vendor/whisper.cpp/CMakeLists.txt" ]; then
+  git submodule update --init --recursive
+fi
+ok "present"
+
 # ── 1. Xcode Command Line Tools ───────────────────────────────────────────────
 step "Xcode Command Line Tools"
 if ! xcode-select -p >/dev/null 2>&1; then
@@ -90,6 +99,18 @@ if [ -f "vendor/whisper.cpp/build/src/libwhisper.a" ]; then
 else
   bash scripts/build_whisper.sh
   ok "built"
+fi
+
+# ── 7b. Self-signed dev certificate ───────────────────────────────────────────
+# Without this, the app falls back to ad-hoc signing, which resets the Accessibility
+# (hotkey/paste) permission grant on every rebuild — annoying if you're iterating on
+# the app afterward (e.g. with Claude Code). A stable cert makes that grant persist.
+step "Code-signing certificate"
+if security find-identity -v 2>/dev/null | grep -q "FlowLocal Dev"; then
+  ok "already present"
+else
+  bash scripts/create_cert.sh
+  ok "created"
 fi
 
 # ── 8. Build the app ──────────────────────────────────────────────────────────

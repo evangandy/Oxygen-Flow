@@ -210,16 +210,16 @@ final class DictationController: ObservableObject {
                     // Whole utterance matched a voice macro — deliver the canned expansion
                     // verbatim, skipping cleanup entirely.
                     finalText = snippet
-                    if editable { injector.injectAtCursor(finalText) }
                 } else if settings.cleanupEnabled {
                     state = .cleaning
-                    finalText = await produceCleaned(raw: commanded, streamToCursor: editable, glossary: glossary)
-                } else if editable {
-                    injector.injectAtCursor(commanded)
+                    finalText = await produceCleaned(raw: commanded, glossary: glossary)
                 }
 
+                // Paste (or copy) only once the final text is ready — no progressive/streaming
+                // paste, so it lands as a single clean drop instead of arriving in chunks.
                 let delivery: DeliveryMode
                 if editable {
+                    injector.injectAtCursor(finalText)
                     delivery = .pasted
                     if settings.autoSubmitEnabled { injector.pressReturn() }
                     state = .idle
@@ -244,11 +244,9 @@ final class DictationController: ObservableObject {
         }
     }
 
-    /// Run Ollama cleanup, returning the full cleaned text. When `streamToCursor` is true the
-    /// text is progressively pasted at the cursor as it generates; otherwise it is only collected
-    /// (for the copy-to-clipboard path). Falls back to the raw transcript if Ollama fails.
-    private func produceCleaned(raw: String, streamToCursor: Bool, glossary: String?) async -> String {
-        let session = streamToCursor ? injector.makeSession() : nil
+    /// Run Ollama cleanup, returning the full cleaned text once generation finishes. Falls back
+    /// to the raw transcript if Ollama fails.
+    private func produceCleaned(raw: String, glossary: String?) async -> String {
         do {
             let full = try await cleanup.clean(
                 raw: raw,
@@ -258,15 +256,11 @@ final class DictationController: ObservableObject {
                 context: targetContext,
                 glossary: glossary,
                 tone: settings.toneGuidance,
-                onDelta: { session?.feed($0) }
+                onDelta: { _ in }
             )
-            session?.finish()
             return full.isEmpty ? raw : full
         } catch {
             NSLog("[Cobalt] Cleanup failed, falling back to raw: \(error.localizedDescription)")
-            if let session {
-                if session.pastedAny { session.finish() } else { injector.injectAtCursor(raw) }
-            }
             return raw
         }
     }

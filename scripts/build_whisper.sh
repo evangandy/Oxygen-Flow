@@ -3,6 +3,14 @@
 # Run once after cloning, or when you update vendor/whisper.cpp.
 set -euo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+cd "$ROOT"
+
+# A plain `git clone` (without --recurse-submodules) leaves this as an empty directory.
+if [ ! -f "vendor/whisper.cpp/CMakeLists.txt" ]; then
+  echo "==> vendor/whisper.cpp is empty, fetching submodule…"
+  git submodule update --init --recursive
+fi
+
 cd "$ROOT/vendor/whisper.cpp"
 
 cmake -B build \

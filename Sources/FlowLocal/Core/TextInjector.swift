@@ -3,9 +3,9 @@ import ApplicationServices
 import CoreGraphics
 
 /// Inserts text into whatever app is focused by writing to the pasteboard and synthesizing
-/// Cmd+V. Supports a one-shot paste and a progressive (sentence-chunked) streaming session so
-/// long dictations appear as they are generated. The original clipboard is restored at the end.
-/// When no editable field is focused, callers should fall back to `copyToClipboard` instead.
+/// Cmd+V — always as a single one-shot paste once the final text is ready, never progressively.
+/// The original clipboard is restored afterward. When no editable field is focused, callers
+/// should fall back to `copyToClipboard` instead.
 final class TextInjector {
 
     private let pasteboard = NSPasteboard.general
@@ -108,51 +108,6 @@ final class TextInjector {
             if let saved { NSPasteboard.general.setString(saved, forType: .string) }
         }
     }
-
-    /// A streaming injection: feed token deltas; complete sentences are pasted as they form.
-    final class Session {
-        private let injector: TextInjector
-        private let savedClipboard: String?
-        private var buffer = ""
-        private(set) var pastedAny = false
-
-        init(injector: TextInjector) {
-            self.injector = injector
-            self.savedClipboard = NSPasteboard.general.string(forType: .string)
-        }
-
-        /// Append a delta; flush any complete sentence(s) to the cursor.
-        func feed(_ delta: String) {
-            buffer += delta
-            guard let idx = lastSentenceBoundary(in: buffer) else { return }
-            let chunk = String(buffer[..<idx])
-            buffer = String(buffer[idx...])
-            flush(chunk)
-        }
-
-        /// Paste whatever remains and restore the clipboard.
-        func finish() {
-            let remaining = buffer.trimmingCharacters(in: .whitespaces)
-            if !remaining.isEmpty { flush(remaining) }
-            buffer = ""
-            TextInjector.restoreClipboard(savedClipboard)
-        }
-
-        private func flush(_ text: String) {
-            let piece = pastedAny ? text : text.drop(while: { $0 == " " }).description
-            guard !piece.isEmpty else { return }
-            injector.paste(piece)
-            pastedAny = true
-        }
-
-        /// Index just past the last sentence terminator (., !, ?, newline), if any.
-        private func lastSentenceBoundary(in s: String) -> String.Index? {
-            guard let i = s.lastIndex(where: { ".!?\n".contains($0) }) else { return nil }
-            return s.index(after: i)
-        }
-    }
-
-    func makeSession() -> Session { Session(injector: self) }
 
     /// Synthesize a Return keypress — used for the opt-in "auto-submit" setting so dictating
     /// into a chat box also sends it, the way Wispr Flow's auto-send does.

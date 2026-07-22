@@ -2,134 +2,137 @@
 
 **A completely free, fully offline version of [Wispr Flow](https://wisprflow.ai).** AI voice
 dictation that works in any app, running **100% on your Mac** — no login, no account, no cloud,
-no subscription.
+no subscription, nothing ever leaves your machine.
 
-Press **Control+~**, speak, press **Control+~** again. Your speech is transcribed by
-whisper.cpp, cleaned up (grammar, punctuation, filler removal, formatting) by a local model, and
-pasted at your cursor — usually within a fraction of a second. If no text field is focused, the
-result is placed on your clipboard instead.
+Press **Control+~**, speak, press **Control+~** again. Your speech is transcribed locally,
+cleaned up (grammar, punctuation, filler removal, formatting), and pasted at your cursor.
 
-> The Swift module/executable is still named `FlowLocal` internally (a mechanical rename to come);
-> everything user-facing — the app, icon, window, menu bar — is **Oxygen Flow**.
+## Setup
 
-## Install (one command)
+**Requirement: Apple Silicon Mac (M1 or later), macOS 14+.**
 
-Apple Silicon Mac. Clone and run the installer — it does **everything**:
+### If you have Claude Code (or a similar coding agent)
+
+Clone the repo, then paste this to your agent:
+
+> Set up Oxygen Flow on this Mac: run `./make.sh` to install everything (toolchain, Ollama, the
+> speech model, and the app itself), and if anything in it fails, fix it and re-run until it
+> finishes cleanly. Confirm the code-signing certificate got created (`security find-identity -v
+> | grep "FlowLocal Dev"`) — that's what keeps macOS from revoking the Accessibility permission
+> on every rebuild — and run `scripts/create_cert.sh` if it's missing. Then open the app and
+> confirm it launches.
 
 ```bash
-git clone https://github.com/evangandy/Oxygen-Flow.git
+git clone --recurse-submodules https://github.com/evangandy/Oxygen-Flow.git
+cd Oxygen-Flow
+```
+
+That's it — hand the rest to your agent. It can keep iterating on the app afterward too (rebuild,
+tweak settings, restart it) without you typing commands yourself.
+
+### Doing it yourself, no agent
+
+```bash
+git clone --recurse-submodules https://github.com/evangandy/Oxygen-Flow.git
 cd Oxygen-Flow
 ./make.sh
 ```
 
-`make.sh` installs the toolchain (Command Line Tools, Homebrew, cmake), installs & starts Ollama,
-pulls the cleanup model, downloads the Whisper speech model, builds the app, installs it to
-**/Applications**, enables it at login, and opens the one-time permission panes for you. It's safe
-to re-run — finished steps are skipped.
+`make.sh` does **everything**: installs the toolchain (Command Line Tools, Homebrew, cmake),
+installs & starts Ollama, pulls the cleanup model, downloads the Whisper speech model, creates a
+stable local code-signing certificate, builds the app, installs it to **/Applications**, enables
+it at login, and opens the permissions pane for you. Safe to re-run — it skips finished steps.
 
-First launch, grant the two permissions macOS requires of any dictation app:
-- **Accessibility** — for the global hotkey and pasting into other apps (the installer opens this
-  pane; flip on "Oxygen Flow").
+### Permissions (macOS asks once)
+
+- **Accessibility** — for the global hotkey and pasting into other apps. `make.sh` opens this pane
+  for you; flip on "Oxygen Flow".
 - **Microphone** — you'll be asked the first time you dictate. Click Allow.
 
-> The app is **self-signed** (no paid Apple Developer ID). Because you build it locally, there's no
-> Gatekeeper "damaged app" warning. If you ever copy the built `.app` to another Mac, that Mac will
-> need a one-time **right-click → Open**.
+> The app is self-signed with a certificate generated on your own machine (no paid Apple Developer
+> ID needed) — that's normal, and how it avoids Gatekeeper's "damaged app" warning without one.
 
 ## Using it
 
-- **Control+~** — start dictating; press again to stop. (Configurable in Settings.)
-- The floating **chip** shows a live waveform with a **✕** (cancel) and **✓** (confirm) button, and
-  appears on whichever monitor your mouse is on.
-- **No editable field focused?** The text is copied to your clipboard — the chip shows
+- **Control+~** — start dictating; press again to stop. (Change it in Settings.)
+- **Control+Command+R** — select text in any app, press this, and it gets rewritten in place by
+  the local model. Separate from dictation — this one's allowed to actually rephrase.
+- The floating chip shows a live waveform with **✕** (cancel) / **✓** (confirm), and follows
+  whichever monitor your mouse is on.
+- **No editable field focused?** The result goes to your clipboard instead — the chip shows
   "Copied · ⌘V".
+- **Voice commands while dictating** — say "scratch that" to undo the last sentence, "new
+  paragraph"/"new line" to break, or "comma"/"period"/"question mark" etc. for literal punctuation.
+- **Dictionary** (sidebar) — teach it names, acronyms, or jargon it should recognize exactly (e.g.
+  "10-K") and, optionally, what they mean, so cleanup understands the term instead of guessing.
+- **Snippets** (sidebar) — say a trigger phrase as your whole dictation and it pastes a canned
+  block instead (a signature, an address, boilerplate you say often).
+- **Settings** — Whisper model, language (100+, or auto-detect), cleanup style (Formal / Casual /
+  Very Casual / Notes), per-app style overrides, personal tone (paste writing samples to match
+  your voice), auto-submit, and privacy mode (skip saving history entirely).
 
-## Features
+## If setup breaks
 
-- **Instant local dictation** — whisper.cpp (Metal) + Ollama, both kept warm in memory.
-- **History & insights** — every dictation is saved locally (raw + cleaned text) so you can review
-  what changed; tracks words/min, day streaks, time saved, activity, and where you dictate most.
-- **Context-aware formatting** — code editors get concise/technical cleanup; Gmail/Mail get an
-  email tone; everything else uses a generalist style.
-- **Quiet / whisper speech** — adaptive input-gain normalization so faint speech is still picked up.
-- **Customizable shortcut** — default Control+~; record your own in Settings.
-- **Model picker** — choose any model installed in your local Ollama.
-- **Auto-starts Ollama** — if it isn't running, the app launches it for you.
-- **Private by design** — nothing ever leaves your machine.
+Point your agent at the failure — it's meant to be able to fix its own setup. A few common ones:
 
-## Pipeline
+- **`vendor/whisper.cpp` is empty / build fails immediately** — the git submodule wasn't fetched.
+  Run `git submodule update --init --recursive`, or just re-run `./make.sh` (it self-heals this).
+- **Hotkey stops responding after a rebuild** — the code-signing identity changed. Run
+  `scripts/create_cert.sh` once (if you haven't), then rebuild with `scripts/build_app.sh release`
+  and re-grant Accessibility.
+- **Ollama not reachable** — `brew services start ollama`, or `ollama serve` in a terminal.
 
-```
-Control+~ (toggle)             floating chip (waveform + ✕ / ✓)
-      │                              ▲
-      ▼                              │ state
-  AVAudioEngine ──16kHz mono──▶ whisper.cpp (Metal) ──raw text──▶ Ollama (streaming)
-                                                                        │ cleaned text
-                                                                        ▼
-                                        paste at cursor (Cmd+V) — or copy to clipboard
-```
-
-- **STT:** whisper.cpp (large-v3-turbo GGML) with Metal — kept warm in memory.
-- **Cleanup:** local Ollama `qwen2.5:3b-instruct` (default) via streaming `/api/generate`, pinned
-  warm with `keep_alive: -1`. Text is injected progressively at sentence boundaries.
-- **App:** native Swift/SwiftUI menu-bar app (`NSPanel` chip, `CGEventTap` hotkey, `AVAudioEngine`,
-  `CGEvent` paste). The binary statically links whisper.cpp — no external dylibs.
-
-Measured on an M4 Pro (JFK 11s clip): model load 0.78s (once), transcribe 0.62s, cleanup
-first-token 0.22s, cleanup total 0.55s.
-
-## Manual / developer build
-
-`make.sh` chains these; run them individually while developing:
+## Rebuilding after changes
 
 ```bash
-./scripts/build_whisper.sh     # build whisper.cpp static libs (once)
-./scripts/make_icon.sh         # (optional) regenerate the app icon
-./scripts/build_app.sh release # build + assemble the signed .app
+scripts/build_app.sh release   # rebuild the app
 open "Oxygen Flow.app"
 ```
 
-Requirements for a manual build: Apple Silicon Mac (macOS 14+), Xcode **Command Line Tools**
-(`swift`, `cmake`), [Ollama](https://ollama.com) running with `qwen2.5:3b-instruct` pulled, and a
-whisper GGML model (set its path in Settings).
-
-Headless pipeline check (no GUI/permissions):
+Or tell your agent: "rebuild and relaunch Oxygen Flow." Headless pipeline check (no GUI/permissions
+needed):
 
 ```bash
 .build/release/FlowLocal --selftest vendor/whisper.cpp/samples/jfk.wav
 ```
 
-## Settings
-
-Open the main window (menu bar → Open Dashboard) → **Settings**, or ⌘, :
-
-- **Whisper model** path (the speech-to-text `.bin` file).
-- **Cleanup (Ollama)** — enable/disable, pick any installed model, endpoint, formatting style, and
-  "Adapt to active app" (code editors / Gmail).
-- **Dictation shortcut** — record your own key combo (default Control+~).
-- **Launch at login**, Accessibility status.
-- **Privacy & history** — reveal the plain-text history in Finder, or clear it.
-
 ## Data & privacy
 
 Every dictation is written to
-`~/Library/Application Support/FlowLocal/history/transcriptions.json` as plain-text JSON —
-**both** the raw transcript and the cleaned output — so you can audit exactly what the model
-changed. Nothing is ever uploaded. Use Settings → Clear history (or delete the file) to wipe it.
+`~/Library/Application Support/FlowLocal/history/transcriptions.json` as plain-text JSON — both
+the raw transcript and the cleaned output, so you can audit exactly what the model changed.
+Nothing is ever uploaded, ever. Turn this off entirely in Settings → Privacy & history, or clear
+it any time.
 
-## Insights
+## Under the hood
 
-Fast stats (words/min, streaks, time saved, activity, top apps) are computed from your history.
-Deeper *semantic* insights are designed to be built **incrementally**: because a full history can
-exceed 100k words — more than a local model can read at once — each dictation gets a one-line AI
-gist the moment it's saved, and those gists roll up into themes. Nothing is ever batched or
-uploaded. (The gist field is scaffolded; the summarization pass is the next step.)
+```
+Control+~ (toggle)             floating chip (waveform + ✕ / ✓)
+      │                              ▲
+      ▼                              │ state
+  AVAudioEngine ──16kHz mono──▶ whisper.cpp (Metal) ──raw text──▶ Ollama
+                                                                        │ cleaned text
+                                                                        ▼
+                                        paste at cursor (Cmd+V) — or copy to clipboard
+```
+
+- **STT:** whisper.cpp (large-v3-turbo GGML) with Metal, kept warm in memory. The personal
+  dictionary biases decoding toward exact spelling via whisper's `initial_prompt`.
+- **Cleanup:** local Ollama (`qwen2.5:3b-instruct` by default) via `/api/generate`, pinned warm
+  with `keep_alive: -1`. A minimal-edit prompt strips filler/fixes grammar without rephrasing;
+  the separate "rewrite selection" command uses a more liberal prompt that's allowed to restructure.
+- **App:** native Swift/SwiftUI menu-bar app (`NSPanel` chip, `CGEventTap` hotkey, `AVAudioEngine`,
+  `CGEvent` paste/copy). Statically links whisper.cpp — no external dylibs at runtime.
+- **Everything else** (history, insights, settings, dictionary, snippets) is plain SwiftUI reading
+  local JSON files under `~/Library/Application Support/FlowLocal/`.
+
+Measured on an M4 Pro (JFK 11s clip): model load 0.78s (once), transcribe 0.62s, cleanup
+first-token 0.22s, cleanup total 0.55s.
 
 ## Notes / limitations
 
-- **Apple Silicon only.** The build is arm64; Intel Macs would need a universal rebuild of the
+- **Apple Silicon only.** The build is arm64; an Intel Mac would need a universal rebuild of the
   whisper libraries.
-- **Self-signed.** macOS may reset granted permissions after a rebuild (the signature hash
-  changes). Re-grant if the hotkey stops responding.
-- Text injection uses Cmd+V (paste); the clipboard fallback covers non-editable targets. A
-  keystroke-typing fallback isn't implemented yet.
+- **Mac-only.** No Windows/iPhone/Android — this is a native macOS app, not a cross-platform one.
+- Self-signed apps can lose the Accessibility grant if the signing identity changes — the stable
+  `FlowLocal Dev` certificate (`scripts/create_cert.sh`) is what prevents that across rebuilds.
