@@ -10,8 +10,10 @@ final class ChipPresenter: ObservableObject {
     @Published var state: DictationController.State = .idle
 }
 
-/// The floating chip — small, clean, black-and-white with a teal accent. Shows only the live waveform while
-/// listening, with a cancel (✕) and confirm (✓) button. No transcript is shown.
+/// The floating chip — small, flat black capsule, white text/icons. No color, no glass/blur
+/// material (that used an `NSVisualEffectView`, an AppKit-bridged effect that rendered
+/// unpredictably) — just solid black on white/dark backgrounds. Shows only the live waveform
+/// while listening, with a cancel (✕) and confirm (✓) button. No transcript is shown.
 struct PillView: View {
     @ObservedObject var controller: DictationController
     @ObservedObject var presenter: ChipPresenter
@@ -19,56 +21,67 @@ struct PillView: View {
     var body: some View {
         content
             .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, 6)
-            .frame(height: 34)
+            .padding(.vertical, 5)
+            .frame(minHeight: 28)
             .background(
-                Capsule(style: .continuous)
-                    .fill(Palette.chipBG)
-                    .shadow(color: .black.opacity(0.18), radius: 14, y: 5)
+                Capsule(style: .continuous).fill(Palette.chipBG)
             )
-            .overlay(
-                Capsule(style: .continuous)
-                    .strokeBorder(Palette.chipRule, lineWidth: 1)
-            )
+            .compositingGroup()
+            .shadow(color: .black.opacity(0.28), radius: 10, y: 4)
             .fixedSize()
-            .animation(.spring(response: 0.34, dampingFraction: 0.82), value: presenter.state)
+            .animation(.spring(response: 0.3, dampingFraction: 0.86), value: presenter.state)
     }
 
     private var horizontalPadding: CGFloat {
-        if case .listening = presenter.state { return 6 }
-        return 13
+        if case .listening = presenter.state { return 5 }
+        return 11
     }
 
     @ViewBuilder private var content: some View {
         switch presenter.state {
         case .listening:
-            HStack(spacing: 8) {
-                ChipButton(system: "xmark", tint: Palette.chipFG.opacity(0.5)) { controller.cancel() }
+            HStack(spacing: 6) {
+                ChipButton(system: "xmark", tint: Palette.chipFG.opacity(0.55)) { controller.cancel() }
                 Waveform(level: controller.level)
-                    .frame(width: 76, height: 24)
+                    .frame(width: 52, height: 18)
                 ChipButton(system: "checkmark", tint: .white, filled: true) { controller.toggle() }
             }
-        case .transcribing, .cleaning:
-            HStack(spacing: 8) {
+        case .transcribing, .cleaning, .rewriting:
+            HStack(spacing: 6) {
                 ProgressView().controlSize(.small).tint(Palette.chipFG)
-                Text(presenter.state == .cleaning ? "Formatting" : "Transcribing").chipLabel()
+                Text(statusLabel).chipLabel()
             }
         case .copied:
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 13, weight: .semibold))
-                    .foregroundStyle(Palette.accent)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
                 Text("Copied · ⌘V to paste").chipLabel()
             }
+        case .rewritten:
+            HStack(spacing: 6) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(.white)
+                Text("Rewrote selection").chipLabel()
+            }
         case .error(let msg):
-            HStack(spacing: 7) {
+            HStack(spacing: 6) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(.system(size: 12, weight: .semibold))
+                    .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(Palette.danger)
-                Text(msg).chipLabel().lineLimit(1).frame(maxWidth: 200)
+                Text(msg).chipLabel().lineLimit(1).frame(maxWidth: 180)
             }
         case .idle:
             EmptyView()
+        }
+    }
+
+    private var statusLabel: String {
+        switch presenter.state {
+        case .cleaning: return "Formatting"
+        case .rewriting: return "Rewriting"
+        default: return "Transcribing"
         }
     }
 }
@@ -84,12 +97,14 @@ private struct ChipButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: system)
-                .font(.system(size: 10, weight: .bold))
-                .foregroundStyle(filled ? .white : tint)
-                .frame(width: 22, height: 22)
+                // Filled (the confirm button) inverts to black-on-white for a clear, high-
+                // contrast affordance against the chip's black background — still strictly
+                // monochrome, no accent color.
+                .foregroundStyle(filled ? Palette.vastInk : tint)
+                .font(.system(size: 9, weight: .bold))
+                .frame(width: 18, height: 18)
                 .background(
-                    Circle().fill(filled ? AnyShapeStyle(Palette.accent)
-                                         : AnyShapeStyle(Palette.chipFG.opacity(hovering ? 0.14 : 0.07)))
+                    Circle().fill(filled ? AnyShapeStyle(.white) : AnyShapeStyle(Palette.chipFG.opacity(hovering ? 0.18 : 0.09)))
                 )
                 .scaleEffect(hovering ? 1.08 : 1)
         }
@@ -100,37 +115,36 @@ private struct ChipButton: View {
 
 private extension Text {
     func chipLabel() -> some View {
-        self.font(.system(size: 12, weight: .medium, design: .rounded))
-            .foregroundStyle(Palette.chipFG.opacity(0.85))
+        self.font(.system(size: 11, weight: .medium, design: .rounded))
+            .foregroundStyle(Palette.chipFG.opacity(0.9))
     }
 }
 
-/// A scrolling level meter, like Wispr Flow: a few rounded bars, each holding the mic level from
-/// a moment in time. New samples push in on the right and scroll left, and each bar springs to
-/// its new height with a little bounce, so the shape reflects your voice with real flow.
+/// A compact, continuously-flowing level meter — thin center-weighted bars that rise and fall
+/// smoothly with the mic input, closer to Wispr Flow's fluid equalizer than a blocky scroller.
 struct Waveform: View {
     var level: Float
-    private let barCount = 13
-    private let maxH: CGFloat = 22
-    private let minH: CGFloat = 3
+    private let barCount = 9
+    private let maxH: CGFloat = 18
+    private let minH: CGFloat = 2.5
 
-    @State private var history: [CGFloat] = Array(repeating: 0, count: 13)
-    private let tick = Timer.publish(every: 0.06, on: .main, in: .common).autoconnect()
+    @State private var history: [CGFloat] = Array(repeating: 0, count: 9)
+    private let tick = Timer.publish(every: 0.09, on: .main, in: .common).autoconnect()
 
     var body: some View {
-        HStack(spacing: 3) {
+        HStack(spacing: 2.5) {
             ForEach(0..<barCount, id: \.self) { i in
                 Capsule()
-                    .fill(Palette.accent)
-                    .frame(width: 3, height: barHeight(history[i]))
+                    .fill(Color.white.opacity(0.9))
+                    .frame(width: 2.5, height: barHeight(history[i]))
             }
         }
+        // A gentle, critically-damped spring — smooth rise/fall with no overshoot "bounce".
+        .animation(.spring(response: 0.4, dampingFraction: 0.9), value: history)
         .onReceive(tick) { _ in
             history.removeFirst()
             history.append(CGFloat(level))
         }
-        // Under-damped spring → the bars overshoot slightly and settle: the "bounce" feel.
-        .animation(.spring(response: 0.34, dampingFraction: 0.55), value: history)
     }
 
     private func barHeight(_ v: CGFloat) -> CGFloat {
@@ -140,7 +154,10 @@ struct Waveform: View {
     }
 }
 
-/// Owns the borderless, always-on-top NSPanel and shows/hides it with a clean fade. The chip is
+/// Owns the borderless, always-on-top NSPanel and shows/hides it with a clean fade. The panel is
+/// a fixed, generously-sized transparent canvas — its frame never resizes while visible, only the
+/// SwiftUI content inside animates. (Resizing the panel itself to hug the animating content is
+/// what previously produced a visible rectangular clip/residue during transitions.) The chip is
 /// interactive only while listening (its buttons accept clicks); otherwise it's click-through.
 @MainActor
 final class PillWindowController {
@@ -149,11 +166,15 @@ final class PillWindowController {
     private let presenter = ChipPresenter()
     private var cancellables = Set<AnyCancellable>()
 
+    /// Generous fixed canvas — big enough for the widest chip content, so the panel frame never
+    /// has to change while visible. Content is bottom-anchored and centered within it.
+    private let canvasSize = NSSize(width: 360, height: 72)
+
     init(controller: DictationController) {
         self.controller = controller
 
         panel = NSPanel(
-            contentRect: NSRect(x: 0, y: 0, width: 160, height: 40),
+            contentRect: NSRect(origin: .zero, size: canvasSize),
             styleMask: [.borderless, .nonactivatingPanel],
             backing: .buffered,
             defer: false
@@ -167,8 +188,16 @@ final class PillWindowController {
         panel.collectionBehavior = [.canJoinAllSpaces, .stationary, .fullScreenAuxiliary, .ignoresCycle]
         panel.hidesOnDeactivate = false
 
-        let host = NSHostingView(rootView: PillView(controller: controller, presenter: presenter))
+        let root = VStack {
+            Spacer()
+            PillView(controller: controller, presenter: presenter)
+                .padding(.bottom, 18)
+        }
+        .frame(width: canvasSize.width, height: canvasSize.height)
+
+        let host = NSHostingView(rootView: root)
         host.translatesAutoresizingMaskIntoConstraints = true
+        host.frame = NSRect(origin: .zero, size: canvasSize)
         panel.contentView = host
 
         controller.$state
@@ -189,12 +218,11 @@ final class PillWindowController {
                 self.panel.orderOut(nil)
             }
         } else {
+            let wasHidden = panel.alphaValue == 0
             presenter.state = state
+            if wasHidden { reposition() }
             panel.orderFrontRegardless()
             fade(to: 1)
-            // Size to the freshly-rendered content on the next runloop tick (after SwiftUI lays out),
-            // so the capsule is never clipped or briefly square.
-            DispatchQueue.main.async { [weak self] in self?.reposition() }
         }
     }
 
@@ -206,18 +234,14 @@ final class PillWindowController {
         }, completionHandler: completion)
     }
 
-    /// Center the chip near the bottom of whichever screen currently holds the mouse cursor,
-    /// so on a multi-monitor setup the chip appears on the screen you're working on.
+    /// Center the fixed canvas near the bottom of whichever screen currently holds the mouse
+    /// cursor, so on a multi-monitor setup the chip appears on the screen you're working on.
+    /// Called once per appearance (not on every content change) since the canvas never resizes.
     private func reposition() {
-        guard let host = panel.contentView else { return }
-        host.layoutSubtreeIfNeeded()
-        let size = host.fittingSize
-        guard size.width > 1, size.height > 1 else { return }
-
         let screen = screenWithMouse()
         let vf = screen.visibleFrame
-        let origin = NSPoint(x: vf.midX - size.width / 2, y: vf.minY + 64)
-        panel.setFrame(NSRect(origin: origin, size: size), display: true, animate: false)
+        let origin = NSPoint(x: vf.midX - canvasSize.width / 2, y: vf.minY + 40)
+        panel.setFrame(NSRect(origin: origin, size: canvasSize), display: true, animate: false)
     }
 
     private func screenWithMouse() -> NSScreen {

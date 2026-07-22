@@ -1,6 +1,6 @@
 #!/usr/bin/env swift
-// Generates the Oxygen Flow app icon: a rounded "squircle" in a cobalt-blue gradient
-// with two white chevrons (»), reading as flow / motion.
+// Generates the Oxygen Flow app icon: a near-black rounded "squircle" with a single centered
+// white circle.
 // Renders a 1024px master PNG, then builds AppIcon.icns via `sips` + `iconutil`.
 //
 // Usage: swift scripts/make_icon.swift  (run from the project root)
@@ -17,11 +17,11 @@ NSGraphicsContext.saveGraphicsState()
 NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
 let ctx = NSGraphicsContext.current!.cgContext
 
-func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat) -> CGColor {
-    CGColor(red: r/255, green: g/255, blue: b/255, alpha: 1)
+func rgb(_ r: CGFloat, _ g: CGFloat, _ b: CGFloat, _ a: CGFloat = 1) -> CGColor {
+    CGColor(red: r/255, green: g/255, blue: b/255, alpha: a)
 }
 
-// --- Squircle background with cobalt vertical gradient ---
+// --- Squircle background, near-black with a faint top sheen ---
 let margin: CGFloat = 88
 let rect = CGRect(x: margin, y: margin, width: S - margin*2, height: S - margin*2)
 let corner: CGFloat = (S - margin*2) * 0.235
@@ -30,37 +30,28 @@ let squircle = CGPath(roundedRect: rect, cornerWidth: corner, cornerHeight: corn
 ctx.saveGState()
 ctx.addPath(squircle)
 ctx.clip()
-let top = rgb(30, 30, 32)        // near-black (subtle gloss)
-let bottom = rgb(0, 0, 0)        // black
-let grad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                      colors: [top, bottom] as CFArray, locations: [0, 1])!
-ctx.drawLinearGradient(grad, start: CGPoint(x: 0, y: S), end: CGPoint(x: 0, y: 0), options: [])
-// subtle top sheen
+let top = rgb(30, 30, 32)
+let bottom = rgb(0, 0, 0)
+let bgGrad = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
+                         colors: [top, bottom] as CFArray, locations: [0, 1])!
+ctx.drawLinearGradient(bgGrad, start: CGPoint(x: 0, y: S), end: CGPoint(x: 0, y: 0), options: [])
 let sheen = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(),
-                       colors: [CGColor(red: 1, green: 1, blue: 1, alpha: 0.16),
-                                CGColor(red: 1, green: 1, blue: 1, alpha: 0)] as CFArray,
-                       locations: [0, 1])!
+                        colors: [CGColor(red: 1, green: 1, blue: 1, alpha: 0.16),
+                                 CGColor(red: 1, green: 1, blue: 1, alpha: 0)] as CFArray,
+                        locations: [0, 1])!
 ctx.drawLinearGradient(sheen, start: CGPoint(x: 0, y: S), end: CGPoint(x: 0, y: S*0.55), options: [])
 ctx.restoreGState()
 
-// --- Single chevron (>), white, round joins ---
+// --- Single centered white circle ---
 let cx = S/2, cy = S/2
-let halfH: CGFloat = 230      // vertical reach of the chevron arms
-let armW: CGFloat  = 175      // horizontal depth of the chevron
-let lineW: CGFloat = 104
+let r: CGFloat = 250
+let circle = CGPath(ellipseIn: CGRect(x: cx - r, y: cy - r, width: r*2, height: r*2), transform: nil)
 
-let apex = cx + armW * 0.45   // nudge the point toward center
-let chevron = CGMutablePath()
-chevron.move(to: CGPoint(x: apex - armW, y: cy + halfH))
-chevron.addLine(to: CGPoint(x: apex,          y: cy))
-chevron.addLine(to: CGPoint(x: apex - armW, y: cy - halfH))
-
-ctx.setStrokeColor(rgb(20, 180, 200)) // Bahama teal accent
-ctx.setLineWidth(lineW)
-ctx.setLineCap(.round)
-ctx.setLineJoin(.round)
-ctx.addPath(chevron)
-ctx.strokePath()
+ctx.saveGState()
+ctx.setFillColor(rgb(255, 255, 255))
+ctx.addPath(circle)
+ctx.fillPath()
+ctx.restoreGState()
 
 NSGraphicsContext.restoreGraphicsState()
 

@@ -3,10 +3,19 @@ import ApplicationServices
 
 /// The kind of app the user is dictating into, used to adapt the cleanup formatting.
 /// Only three buckets by design: code editors, email, and a generalist default.
-enum AppContext: String {
+enum AppContext: String, CaseIterable {
     case code
     case email
     case general
+
+    /// Display label for the per-context style picker in Settings.
+    var label: String {
+        switch self {
+        case .code: return "Code editors"
+        case .email: return "Email"
+        case .general: return "Everywhere else"
+        }
+    }
 
     /// Formatting guidance injected into the Ollama cleanup system prompt for this context.
     var promptGuidance: String? {

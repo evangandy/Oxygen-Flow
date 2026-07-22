@@ -13,6 +13,8 @@ final class DictationController: ObservableObject {
         case transcribing
         case cleaning
         case copied         // finished, text placed on the clipboard (no editable field was focused)
+        case rewriting      // "rewrite selection" command: reading the selection + calling the model
+        case rewritten      // rewrite finished and pasted back; brief confirmation before idle
         case error(String)
     }
 
@@ -22,8 +24,11 @@ final class DictationController: ObservableObject {
     @Published private(set) var isReady = false
     @Published private(set) var lastError: String?
 
+    private static let accessibilityNeeded = "Grant Accessibility permission, then relaunch."
+
     private let settings = AppSettings.shared
     private let hotkey = HotkeyManager()
+    private let rewriteHotkey = HotkeyManager()
     private let recorder = AudioRecorder()
     // Accessed on `inferenceQueue` (serialized), never concurrently with the main actor.
     private nonisolated(unsafe) let transcriber = Transcriber()
@@ -34,6 +39,7 @@ final class DictationController: ObservableObject {
     private var targetAppName: String?
     private var targetContext: AppContext = .general
     private var copiedResetTask: Task<Void, Never>?
+    private var rewrittenResetTask: Task<Void, Never>?
 
     private var cancellables = Set<AnyCancellable>()
     private var accessibilityTimer: Timer?
@@ -46,6 +52,7 @@ final class DictationController: ObservableObject {
             .store(in: &cancellables)
 
         hotkey.onToggle = { [weak self] in self?.toggle() }
+        rewriteHotkey.onToggle = { [weak self] in self?.triggerRewrite() }
 
         // Keep the global hotkey in sync with the user's configured shortcut.
         hotkey.configure(keyCode: settings.hotkeyKeyCode, modifierFlags: settings.hotkeyModifierFlags)
@@ -53,29 +60,28 @@ final class DictationController: ObservableObject {
             .receive(on: RunLoop.main)
             .sink { [weak self] code, flags in self?.hotkey.configure(keyCode: code, modifierFlags: flags) }
             .store(in: &cancellables)
+
+        rewriteHotkey.configure(keyCode: settings.rewriteHotkeyKeyCode, modifierFlags: settings.rewriteHotkeyModifierFlags)
+        Publishers.CombineLatest(settings.$rewriteHotkeyKeyCode, settings.$rewriteHotkeyModifierFlags)
+            .receive(on: RunLoop.main)
+            .sink { [weak self] code, flags in self?.rewriteHotkey.configure(keyCode: code, modifierFlags: flags) }
+            .store(in: &cancellables)
     }
 
     // MARK: - Lifecycle
 
     /// Called once at launch: request permissions, start the hotkey, warm the models.
     func bootstrap() {
-        NSLog("[Cobalt] bootstrap() starting")
-        NSLog("[Cobalt] AXIsProcessTrusted = \(HotkeyManager.hasAccessibilityPermission)")
-
-        AudioRecorder.requestMicrophonePermission { granted in
-            NSLog("[Cobalt] Microphone permission: \(granted)")
-        }
+        AudioRecorder.requestMicrophonePermission { _ in }
 
         if !HotkeyManager.hasAccessibilityPermission {
-            NSLog("[Cobalt] Accessibility NOT granted — requesting prompt")
             HotkeyManager.requestAccessibilityPermission()
         }
 
-        let tapOk = hotkey.start()
-        NSLog("[Cobalt] hotkey.start() = \(tapOk)")
-        if !tapOk {
-            lastError = "Grant Accessibility permission, then relaunch."
+        if !hotkey.start() {
+            lastError = Self.accessibilityNeeded
         }
+        rewriteHotkey.start()
 
         // Periodically retry the event tap in case the user grants permission after launch.
         startAccessibilityRetryTimer()
@@ -91,15 +97,13 @@ final class DictationController: ObservableObject {
 
         // Load whisper off the main thread; mark ready when done.
         let path = settings.whisperModelPath
-        NSLog("[Cobalt] Loading whisper model from: \(path)")
         inferenceQueue.async { [weak self] in
             guard let self else { return }
             do {
                 try self.transcriber.loadModel(at: path)
-                NSLog("[Cobalt] Whisper model loaded OK")
                 Task { @MainActor in self.isReady = true }
             } catch {
-                NSLog("[Cobalt] Whisper model FAILED: \(error)")
+                NSLog("[Cobalt] Whisper model failed to load: \(error)")
                 Task { @MainActor in
                     self.lastError = error.localizedDescription
                     self.state = .error(error.localizedDescription)
@@ -113,43 +117,30 @@ final class DictationController: ObservableObject {
         accessibilityTimer = Timer.scheduledTimer(withTimeInterval: 2.0, repeats: true) { [weak self] timer in
             guard let self else { timer.invalidate(); return }
             Task { @MainActor in
-                let trusted = HotkeyManager.hasAccessibilityPermission
-                if trusted {
-                    let ok = self.hotkey.start()
-                    if ok {
-                        NSLog("[Cobalt] ✅ Event tap connected successfully!")
-                        self.lastError = nil
-                        timer.invalidate()
-                        self.accessibilityTimer = nil
-                    } else {
-                        NSLog("[Cobalt] AX trusted but tap failed — will retry")
-                    }
-                }
+                guard HotkeyManager.hasAccessibilityPermission, self.hotkey.start() else { return }
+                self.rewriteHotkey.start()
+                self.lastError = nil
+                timer.invalidate()
+                self.accessibilityTimer = nil
             }
         }
     }
 
     /// Re-check the hotkey tap after the user grants Accessibility (from the menu).
     func retryHotkey() {
-        NSLog("[Cobalt] retryHotkey() — AX trusted: \(HotkeyManager.hasAccessibilityPermission)")
-        if hotkey.start() {
-            NSLog("[Cobalt] ✅ retryHotkey succeeded")
-            lastError = nil
-        } else {
-            NSLog("[Cobalt] ❌ retryHotkey failed")
-        }
+        if hotkey.start() { lastError = nil }
+        rewriteHotkey.start()
     }
 
     // MARK: - Toggle / cancel
 
     func toggle() {
-        NSLog("[Cobalt] toggle() — current state: \(state)")
         switch state {
-        case .idle, .error, .copied:
+        case .idle, .error, .copied, .rewritten:
             startListening()
         case .listening:
             stopAndProcess()
-        case .transcribing, .cleaning:
+        case .transcribing, .cleaning, .rewriting:
             break // busy; ignore
         }
     }
@@ -166,11 +157,7 @@ final class DictationController: ObservableObject {
         copiedResetTask?.cancel()
         do {
             try recorder.start()
-            if HotkeyManager.hasAccessibilityPermission {
-                lastError = nil
-            } else {
-                lastError = "Grant Accessibility permission, then relaunch."
-            }
+            lastError = HotkeyManager.hasAccessibilityPermission ? nil : Self.accessibilityNeeded
             state = .listening
         } catch {
             state = .error(error.localizedDescription)
@@ -201,27 +188,40 @@ final class DictationController: ObservableObject {
 
     private func runPipeline(samples: [Float]) {
         let appName = targetAppName
+        let vocabulary = DictionaryStore.shared.whisperVocabulary
+        let language = settings.whisperLanguageCode
+        let glossary = DictionaryStore.shared.cleanupGlossary
         Task {
             do {
-                let raw = try await transcribeAsync(samples)
-                NSLog("[Cobalt] Transcription: '\(raw)'")
+                let raw = try await transcribeAsync(samples, language: language, vocabulary: vocabulary)
                 guard !raw.isEmpty else { state = .idle; return }
+
+                // In-line commands ("scratch that", "new paragraph") act on the raw transcript
+                // before anything else sees it.
+                let commanded = settings.voiceCommandsEnabled ? VoiceCommands.process(raw) : raw
+                guard !commanded.isEmpty else { state = .idle; return }
 
                 let audioDuration = Double(samples.count) / 16_000.0
                 // Give focus a beat to settle back on the target field after hiding.
                 let editable = TextInjector.focusedElementIsEditable()
 
-                var finalText = raw
-                if settings.cleanupEnabled {
+                var finalText = commanded
+                if let snippet = SnippetStore.shared.match(commanded) {
+                    // Whole utterance matched a voice macro — deliver the canned expansion
+                    // verbatim, skipping cleanup entirely.
+                    finalText = snippet
+                    if editable { injector.injectAtCursor(finalText) }
+                } else if settings.cleanupEnabled {
                     state = .cleaning
-                    finalText = await produceCleaned(raw: raw, streamToCursor: editable)
+                    finalText = await produceCleaned(raw: commanded, streamToCursor: editable, glossary: glossary)
                 } else if editable {
-                    injector.injectAtCursor(raw)
+                    injector.injectAtCursor(commanded)
                 }
 
                 let delivery: DeliveryMode
                 if editable {
                     delivery = .pasted
+                    if settings.autoSubmitEnabled { injector.pressReturn() }
                     state = .idle
                 } else {
                     injector.copyToClipboard(finalText)
@@ -230,10 +230,12 @@ final class DictationController: ObservableObject {
                     scheduleCopiedReset()
                 }
 
-                TranscriptionStore.shared.add(
-                    raw: raw, cleaned: finalText, audioDuration: audioDuration,
-                    appName: appName, delivery: delivery
-                )
+                if settings.saveHistoryEnabled {
+                    TranscriptionStore.shared.add(
+                        raw: raw, cleaned: finalText, audioDuration: audioDuration,
+                        appName: appName, delivery: delivery
+                    )
+                }
             } catch {
                 state = .error(error.localizedDescription)
                 lastError = error.localizedDescription
@@ -245,15 +247,17 @@ final class DictationController: ObservableObject {
     /// Run Ollama cleanup, returning the full cleaned text. When `streamToCursor` is true the
     /// text is progressively pasted at the cursor as it generates; otherwise it is only collected
     /// (for the copy-to-clipboard path). Falls back to the raw transcript if Ollama fails.
-    private func produceCleaned(raw: String, streamToCursor: Bool) async -> String {
+    private func produceCleaned(raw: String, streamToCursor: Bool, glossary: String?) async -> String {
         let session = streamToCursor ? injector.makeSession() : nil
         do {
             let full = try await cleanup.clean(
                 raw: raw,
                 endpoint: settings.ollamaEndpoint,
                 model: settings.ollamaModel,
-                style: settings.formattingStyle,
+                style: settings.style(for: targetContext),
                 context: targetContext,
+                glossary: glossary,
+                tone: settings.toneGuidance,
                 onDelta: { session?.feed($0) }
             )
             session?.finish()
@@ -275,12 +279,12 @@ final class DictationController: ObservableObject {
         }
     }
 
-    private func transcribeAsync(_ samples: [Float]) async throws -> String {
+    private func transcribeAsync(_ samples: [Float], language: String?, vocabulary: String) async throws -> String {
         try await withCheckedThrowingContinuation { cont in
             inferenceQueue.async { [weak self] in
                 guard let self else { cont.resume(returning: ""); return }
                 do {
-                    let text = try self.transcriber.transcribe(samples: samples)
+                    let text = try self.transcriber.transcribe(samples: samples, language: language, vocabulary: vocabulary)
                     cont.resume(returning: text)
                 } catch {
                     cont.resume(throwing: error)
@@ -293,6 +297,60 @@ final class DictationController: ObservableObject {
         Task {
             try? await Task.sleep(nanoseconds: 1_400_000_000)
             if case .error = state { state = .idle }
+        }
+    }
+
+    // MARK: - Rewrite selection ("click text, rephrase")
+
+    /// Fired by the rewrite hotkey: capture whatever is selected in the frontmost app, send it to
+    /// the local model for a real rewrite (not the minimal dictation cleanup), and paste the
+    /// result back over the selection.
+    func triggerRewrite() {
+        guard state == .idle || state == .copied || state == .rewritten else { return }
+        rewrittenResetTask?.cancel()
+        Task { await performRewrite() }
+    }
+
+    private func performRewrite() async {
+        state = .rewriting
+        // Detect context before captureSelection's Cmd+C briefly steals focus/settles the pasteboard.
+        let context = settings.contextAwareFormatting ? AppContext.detect() : .general
+        guard let capture = TextInjector.captureSelection() else {
+            state = .error("No text selected")
+            flashErrorThenIdle()
+            return
+        }
+        do {
+            let rewritten = try await cleanup.rewrite(
+                text: capture.text,
+                endpoint: settings.ollamaEndpoint,
+                model: settings.ollamaModel,
+                style: settings.style(for: context),
+                glossary: DictionaryStore.shared.cleanupGlossary,
+                tone: settings.toneGuidance
+            )
+            guard !rewritten.isEmpty else {
+                injector.replaceSelection(with: capture.text, originalClipboard: capture.originalClipboard)
+                state = .idle
+                return
+            }
+            injector.replaceSelection(with: rewritten, originalClipboard: capture.originalClipboard)
+            state = .rewritten
+            scheduleRewrittenReset()
+        } catch {
+            // Put the original selection back so nothing is lost on failure.
+            injector.replaceSelection(with: capture.text, originalClipboard: capture.originalClipboard)
+            state = .error(error.localizedDescription)
+            lastError = error.localizedDescription
+            flashErrorThenIdle()
+        }
+    }
+
+    private func scheduleRewrittenReset() {
+        rewrittenResetTask?.cancel()
+        rewrittenResetTask = Task {
+            try? await Task.sleep(nanoseconds: 1_600_000_000)
+            if state == .rewritten { state = .idle }
         }
     }
 }

@@ -62,8 +62,10 @@ final class Transcriber {
     }
 
     /// Transcribe 16 kHz mono float samples. Synchronous — call off the main thread.
-    /// `language` nil means auto-detect; pass "en" for fastest English decoding.
-    func transcribe(samples: [Float], language: String? = "en") throws -> String {
+    /// `language` nil means auto-detect; pass "en" for fastest English decoding. `vocabulary` is
+    /// an optional comma-separated list of jargon/names (from the personal dictionary) fed to
+    /// whisper as `initial_prompt` to bias decoding toward the exact spelling of those terms.
+    func transcribe(samples: [Float], language: String? = "en", vocabulary: String = "") throws -> String {
         guard let ctx else { throw TranscriberError.loadFailed("model not loaded") }
         guard !samples.isEmpty else { return "" }
 
@@ -84,18 +86,17 @@ final class Transcriber {
         // Lower the "no speech" threshold so faint/whispered segments aren't dropped as silence.
         params.no_speech_thold = 0.2
 
-        // Language is held for the duration of the call via a C string.
-        let result: Int32 = (language.map { lang in
-            lang.withCString { cstr -> Int32 in
-                params.language = cstr
+        // Language and vocabulary are C strings that must stay alive for the duration of the call.
+        let result: Int32 = Transcriber.withOptionalCString(language) { langPtr in
+            Transcriber.withOptionalCString(vocabulary.isEmpty ? nil : vocabulary) { promptPtr in
+                var p = params
+                p.language = langPtr
+                p.initial_prompt = promptPtr
                 return samples.withUnsafeBufferPointer { buf in
-                    whisper_full(ctx, params, buf.baseAddress, Int32(buf.count))
+                    whisper_full(ctx, p, buf.baseAddress, Int32(buf.count))
                 }
             }
-        } ?? samples.withUnsafeBufferPointer { buf in
-            params.language = nil
-            return whisper_full(ctx, params, buf.baseAddress, Int32(buf.count))
-        })
+        }
 
         guard result == 0 else { throw TranscriberError.inferenceFailed }
 
@@ -107,5 +108,11 @@ final class Transcriber {
             }
         }
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// Runs `body` with `s` as a live `UnsafePointer<CChar>?`, or `nil` if `s` is nil.
+    private static func withOptionalCString<R>(_ s: String?, _ body: (UnsafePointer<CChar>?) -> R) -> R {
+        guard let s else { return body(nil) }
+        return s.withCString(body)
     }
 }

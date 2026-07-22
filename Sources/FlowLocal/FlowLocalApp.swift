@@ -18,6 +18,7 @@ struct FlowLocalApp: App {
 
         Settings {
             SettingsView()
+                .tint(Palette.accent)
         }
     }
 }
@@ -55,6 +56,10 @@ struct MenuContent: View {
         }
         .keyboardShortcut("`", modifiers: [.control])
 
+        Button("Rewrite Selection (\(AppSettings.shared.rewriteHotkeyDisplayString))") {
+            controller.triggerRewrite()
+        }
+
         Divider()
 
         Text(statusText)
@@ -83,6 +88,8 @@ struct MenuContent: View {
         case .transcribing: return "Transcribing…"
         case .cleaning: return "Formatting…"
         case .copied: return "Copied to clipboard"
+        case .rewriting: return "Rewriting selection…"
+        case .rewritten: return "Rewrote selection"
         case .error(let m): return "Error: \(m)"
         }
     }
