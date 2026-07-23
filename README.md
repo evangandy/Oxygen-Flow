@@ -43,6 +43,9 @@ launches:
 > on every rebuild — and run `scripts/create_cert.sh` if it's missing. Then open the app and
 > confirm it launches.
 
+(Agent setup steps, failure diagnosis, and a headless verification check all live in
+[`SETUP.md`](SETUP.md).)
+
 Either way, `make.sh` does **everything**: installs the toolchain (Command Line Tools, Homebrew,
 cmake), installs & starts Ollama, pulls the cleanup model, downloads the Whisper speech model,
 creates a stable local code-signing certificate, builds the app, installs it to
