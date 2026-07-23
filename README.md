@@ -7,18 +7,28 @@ no subscription, nothing ever leaves your machine.
 Press **Control+~**, speak, press **Control+~** again. Your speech is transcribed locally,
 cleaned up (grammar, punctuation, filler removal, formatting), and pasted at your cursor.
 
-## Setup
-
 **Requirement: Apple Silicon Mac (M1 or later), macOS 14+.**
 
-### Clone it
+## Contents
+
+- [Setup](#setup)
+- [Using it](#using-it)
+- [If setup breaks](#if-setup-breaks)
+- [Rebuilding after changes](#rebuilding-after-changes)
+- [Data & privacy](#data--privacy)
+- [Under the hood](#under-the-hood)
+- [Notes / limitations](#notes--limitations)
+
+## Setup
+
+### 1. Clone it
 
 ```bash
 git clone --recurse-submodules https://github.com/evangandy/Oxygen-Flow.git
 cd Oxygen-Flow
 ```
 
-Then pick one:
+### 2. Install (pick one)
 
 **One-click** — open the folder in Finder and **double-click `Install Oxygen Flow.command`.** It
 opens Terminal and runs the full setup for you. Takes a few minutes; the window shows progress.
@@ -32,9 +42,8 @@ opens Terminal and runs the full setup for you. Takes a few minutes; the window 
 ./make.sh
 ```
 
-**Have Claude Code (or a similar agent)?** Paste it this instead of running the script yourself —
-it'll run `make.sh`, diagnose and fix anything that fails, and keep going until the app actually
-launches:
+**Agent (Claude Code or similar)** — paste this instead of running the script yourself; it'll run
+`make.sh`, diagnose and fix anything that fails, and keep going until the app actually launches:
 
 > Set up Oxygen Flow on this Mac: run `./make.sh` to install everything (toolchain, Ollama, the
 > speech model, and the app itself), and if anything in it fails, fix it and re-run until it
@@ -43,16 +52,16 @@ launches:
 > on every rebuild — and run `scripts/create_cert.sh` if it's missing. Then open the app and
 > confirm it launches.
 
-(Agent setup steps, failure diagnosis, and a headless verification check all live in
-[`SETUP.md`](SETUP.md).)
+Full agent-facing setup steps, failure diagnosis, and a headless verification check live in
+[`SETUP.md`](SETUP.md).
 
-Either way, `make.sh` does **everything**: installs the toolchain (Command Line Tools, Homebrew,
-cmake), installs & starts Ollama, pulls the cleanup model, downloads the Whisper speech model,
-creates a stable local code-signing certificate, builds the app, installs it to
-**/Applications**, enables it at login, and opens the permissions pane for you. Safe to re-run —
-it skips finished steps.
+Whichever path you pick, `make.sh` does **everything**: installs the toolchain (Command Line
+Tools, Homebrew, cmake), installs & starts Ollama, pulls the cleanup model, downloads the Whisper
+speech model, creates a stable local code-signing certificate, builds the app, installs it to
+**/Applications**, enables it at login, and opens the permissions pane for you. It's idempotent —
+safe to re-run any time, it just skips whatever's already done.
 
-### Permissions (macOS asks once)
+### 3. Grant permissions (macOS asks once)
 
 - **Accessibility** — for the global hotkey and pasting into other apps. `make.sh` opens this pane
   for you; flip on "Oxygen Flow".
@@ -63,10 +72,10 @@ it skips finished steps.
 
 ## Using it
 
-- **Control+~** — start dictating; press again to stop. (Change it in Settings.)
+- **Control+~** — start dictating; press again to stop. (Customizable in Settings.)
 - **Control+Command+R** — select text in any app, press this, and it gets rewritten in place by
-  the local model. Separate from dictation — this one's allowed to actually rephrase. (Change it
-  in Settings, same as the dictation hotkey.)
+  the local model. Separate from dictation — this one's allowed to actually rephrase.
+  (Also customizable in Settings, same as the dictation hotkey.)
 - The floating chip shows a live waveform with **✕** (cancel) / **✓** (confirm), and follows
   whichever monitor your mouse is on.
 - **No editable field focused?** The result goes to your clipboard instead — the chip shows
@@ -79,7 +88,7 @@ it skips finished steps.
   block instead (a signature, an address, boilerplate you say often).
 - **Settings** — Whisper model, language (100+, or auto-detect), cleanup style (Formal / Casual /
   Very Casual / Notes), per-app style overrides, personal tone (paste writing samples to match
-  your voice), auto-submit, and privacy mode (skip saving history entirely).
+  your voice), custom hotkeys, auto-submit, and privacy mode (skip saving history entirely).
 
 ## If setup breaks
 
@@ -90,7 +99,7 @@ Point your agent at the failure — it's meant to be able to fix its own setup. 
 - **Hotkey stops responding after a rebuild** — the code-signing identity changed. Run
   `scripts/create_cert.sh` once (if you haven't), then rebuild with `scripts/build_app.sh release`
   and re-grant Accessibility.
-- **Ollama not reachable** — `brew services start ollama`, or `ollama serve` in a terminal.
+- **Ollama not reachable** — `brew services start ollama`, or run `ollama serve` in a terminal.
 
 ## Rebuilding after changes
 
