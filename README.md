@@ -65,7 +65,8 @@ it skips finished steps.
 
 - **Control+~** — start dictating; press again to stop. (Change it in Settings.)
 - **Control+Command+R** — select text in any app, press this, and it gets rewritten in place by
-  the local model. Separate from dictation — this one's allowed to actually rephrase.
+  the local model. Separate from dictation — this one's allowed to actually rephrase. (Change it
+  in Settings, same as the dictation hotkey.)
 - The floating chip shows a live waveform with **✕** (cancel) / **✓** (confirm), and follows
   whichever monitor your mouse is on.
 - **No editable field focused?** The result goes to your clipboard instead — the chip shows
